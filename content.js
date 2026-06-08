@@ -1,186 +1,298 @@
 (function () {
   'use strict';
 
-  if (document.getElementById('cco-overlay')) return;
+  if (document.getElementById('cco-host')) return;
 
   const RESCAN_MS = 30_000;
-  let overlay, minimized = false, scanTimer, mutationThrottle;
+  let shadowRoot, mutationThrottle, scanTimer;
 
-  // ── DOM helpers ─────────────────────────────────────────────────────────────
+  // ── Shadow DOM host ──────────────────────────────────────────────────────────
 
-  function textNodes(root, substr) {
+  function buildOverlay() {
+    const host = document.createElement('div');
+    host.id = 'cco-host';
+    host.style.cssText = [
+      'position:fixed', 'bottom:20px', 'right:20px',
+      'width:200px', 'z-index:2147483647',
+      'pointer-events:auto', 'all:unset',
+      'display:block'
+    ].join(';');
+    document.body.appendChild(host);
+
+    shadowRoot = host.attachShadow({ mode: 'open' });
+    shadowRoot.innerHTML = `
+      <style>
+        :host { all: initial; display: block; }
+        #card {
+          width: 200px;
+          background: #1a1b2e;
+          border: 1px solid #2e3058;
+          border-radius: 10px;
+          padding: 8px 11px 9px;
+          box-shadow: 0 4px 18px rgba(0,0,0,0.55);
+          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+          font-size: 11px;
+          color: #c8c9e8;
+          user-select: none;
+          box-sizing: border-box;
+        }
+        .hdr {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          margin-bottom: 7px;
+        }
+        .title {
+          font-size: 10px;
+          font-weight: 700;
+          color: #7b7faa;
+          letter-spacing: 0.06em;
+          text-transform: uppercase;
+        }
+        .toggle-btn {
+          background: none;
+          border: none;
+          color: #5a5e98;
+          cursor: pointer;
+          font-size: 15px;
+          line-height: 1;
+          padding: 0;
+          font-family: inherit;
+        }
+        .toggle-btn:hover { color: #9b9fcc; }
+        .body { display: flex; flex-direction: column; gap: 6px; }
+        #card.min .body { display: none; }
+        .row { display: flex; flex-direction: column; gap: 2px; }
+        .lbl {
+          font-size: 9.5px;
+          color: #6b6f9a;
+        }
+        .bar-row {
+          display: flex;
+          align-items: center;
+          gap: 5px;
+        }
+        .bar {
+          flex: 1;
+          height: 4px;
+          background: #2b2d52;
+          border-radius: 3px;
+          overflow: hidden;
+        }
+        .fill {
+          height: 100%;
+          border-radius: 3px;
+          background: #4f46e5;
+          transition: width 0.4s ease;
+          width: 0%;
+        }
+        .fill.warn  { background: #d97706; }
+        .fill.danger { background: #dc2626; }
+        .pct {
+          font-size: 11px;
+          font-weight: 700;
+          color: #e0e1ff;
+          min-width: 28px;
+          text-align: right;
+        }
+        .sub {
+          font-size: 9px;
+          color: #4e5280;
+        }
+        .div { height: 1px; background: #252748; }
+        .rt-row {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+        }
+        .rt-val {
+          font-size: 12px;
+          font-weight: 700;
+          color: #e0e1ff;
+        }
+        .ts {
+          font-size: 8.5px;
+          color: #353760;
+          text-align: right;
+          margin-top: 5px;
+        }
+      </style>
+      <div id="card">
+        <div class="hdr">
+          <span class="title">Claude 使用状況</span>
+          <button class="toggle-btn" id="tog">−</button>
+        </div>
+        <div class="body">
+          <div class="row">
+            <span class="lbl">現在のセッション</span>
+            <div class="bar-row">
+              <div class="bar"><div class="fill" id="sf"></div></div>
+              <span class="pct" id="sp">--%</span>
+            </div>
+            <span class="sub" id="sr"></span>
+          </div>
+          <div class="div"></div>
+          <div class="row">
+            <span class="lbl">週間制限（全モデル）</span>
+            <div class="bar-row">
+              <div class="bar"><div class="fill" id="wf"></div></div>
+              <span class="pct" id="wp">--%</span>
+            </div>
+            <span class="sub" id="wr"></span>
+          </div>
+          <div class="div"></div>
+          <div class="row rt-row">
+            <span class="lbl">ルーティン</span>
+            <span class="rt-val" id="rt">--</span>
+          </div>
+          <div class="ts" id="ts"></div>
+        </div>
+      </div>`;
+
+    // Toggle
+    let min = false;
+    const card = shadowRoot.getElementById('card');
+    const tog = shadowRoot.getElementById('tog');
+    chrome.storage.local.get('cco_min', ({ cco_min }) => {
+      if (cco_min) { min = true; card.classList.add('min'); tog.textContent = '+'; }
+    });
+    tog.addEventListener('click', () => {
+      min = !min;
+      card.classList.toggle('min', min);
+      tog.textContent = min ? '+' : '−';
+      chrome.storage.local.set({ cco_min: min });
+    });
+  }
+
+  // ── Data extraction ──────────────────────────────────────────────────────────
+
+  function allText(root) {
     const results = [];
-    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+    const w = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
     let n;
-    while ((n = walker.nextNode())) {
-      if (n.nodeValue.includes(substr)) results.push(n);
+    while ((n = w.nextNode())) {
+      const v = n.nodeValue.trim();
+      if (v) results.push({ node: n, text: v });
     }
     return results;
   }
 
-  function closestBlock(node, maxUp = 8) {
+  function nearestBlock(node, up = 6) {
     let el = node.parentElement;
-    for (let i = 0; i < maxUp && el; i++, el = el.parentElement) {
-      if (el.children.length > 1) return el;
+    for (let i = 0; i < up && el && el !== document.body; i++) {
+      if (el.children.length > 1 || el.offsetHeight > 20) return el;
+      el = el.parentElement;
     }
     return node.parentElement;
   }
 
-  function parsePercent(text) {
-    const m = text.match(/(\d+)\s*%/);
-    return m ? parseInt(m[1], 10) : null;
+  function barClass(p) {
+    return p >= 90 ? 'danger' : p >= 70 ? 'warn' : '';
   }
 
-  function parseRoutine(text) {
-    const m = text.match(/(\d+)\s*[\/／]\s*(\d+)/);
-    return m ? `${m[1]} / ${m[2]}` : null;
+  function setBar(fillId, pctId, pct) {
+    const f = shadowRoot.getElementById(fillId);
+    const p = shadowRoot.getElementById(pctId);
+    if (!f || !p) return;
+    f.style.width = pct + '%';
+    f.className = 'fill ' + barClass(pct);
+    p.textContent = pct + '%';
   }
-
-  // ── Build overlay ────────────────────────────────────────────────────────────
-
-  function buildOverlay() {
-    overlay = document.createElement('div');
-    overlay.id = 'cco-overlay';
-    overlay.innerHTML = `
-      <div class="cco-header">
-        <span class="cco-title">Claude 使用状況</span>
-        <button class="cco-toggle" title="最小化">−</button>
-      </div>
-      <div class="cco-body">
-        <div class="cco-item" id="cco-session">
-          <div class="cco-label">現在のセッション</div>
-          <div class="cco-row">
-            <div class="cco-bar"><div class="cco-bar-fill" id="cco-s-fill" style="width:0%"></div></div>
-            <span class="cco-pct" id="cco-s-pct">--%</span>
-          </div>
-          <div class="cco-reset" id="cco-s-reset"></div>
-        </div>
-        <div class="cco-divider"></div>
-        <div class="cco-item" id="cco-weekly">
-          <div class="cco-label">週間制限（全モデル）</div>
-          <div class="cco-row">
-            <div class="cco-bar"><div class="cco-bar-fill" id="cco-w-fill" style="width:0%"></div></div>
-            <span class="cco-pct" id="cco-w-pct">--%</span>
-          </div>
-          <div class="cco-reset" id="cco-w-reset"></div>
-        </div>
-        <div class="cco-divider"></div>
-        <div class="cco-item">
-          <div class="cco-routine-row">
-            <span class="cco-label">ルーティン実行数</span>
-            <span class="cco-routine-count" id="cco-routine">--</span>
-          </div>
-        </div>
-        <div class="cco-updated" id="cco-updated"></div>
-      </div>`;
-    document.body.appendChild(overlay);
-
-    const toggle = overlay.querySelector('.cco-toggle');
-    chrome.storage.local.get('cco_minimized', ({ cco_minimized }) => {
-      if (cco_minimized) setMinimized(true, toggle);
-    });
-    toggle.addEventListener('click', () => {
-      setMinimized(!minimized, toggle);
-      chrome.storage.local.set({ cco_minimized: minimized });
-    });
-  }
-
-  function setMinimized(val, btn) {
-    minimized = val;
-    overlay.classList.toggle('cco-minimized', val);
-    btn.textContent = val ? '+' : '−';
-  }
-
-  // ── Bar color ────────────────────────────────────────────────────────────────
-
-  function barClass(pct) {
-    if (pct >= 90) return 'danger';
-    if (pct >= 70) return 'warn';
-    return '';
-  }
-
-  function applyBar(fillId, pctId, pct) {
-    const fill = document.getElementById(fillId);
-    const pctEl = document.getElementById(pctId);
-    if (!fill || !pctEl) return;
-    fill.style.width = `${pct}%`;
-    fill.className = `cco-bar-fill ${barClass(pct)}`;
-    pctEl.textContent = `${pct}%`;
-  }
-
-  // ── Scan usage data from page DOM ────────────────────────────────────────────
 
   function scan() {
-    const body = document.body;
+    if (!shadowRoot) return;
 
-    // ── Percentage values ──
-    // Look for text like "13% 使用済み" or "50% 使用済み"
-    const usedNodes = textNodes(body, '使用済み');
-    const pcts = [];
-    usedNodes.forEach(n => {
-      // The % and number may be in a sibling/parent span
-      const block = closestBlock(n, 4);
-      const pct = parsePercent(block ? block.textContent : n.nodeValue);
-      if (pct !== null) pcts.push({ pct, node: n });
+    const texts = allText(document.body);
+
+    // ── Strategy 1: aria progressbars ──
+    const ariaBarValues = [];
+    document.querySelectorAll('[role="progressbar"]').forEach(el => {
+      const v = el.getAttribute('aria-valuenow');
+      if (v !== null) ariaBarValues.push(parseInt(v, 10));
     });
 
-    // Fallback: aria progressbars
-    if (pcts.length === 0) {
-      document.querySelectorAll('[role="progressbar"]').forEach(el => {
-        const v = el.getAttribute('aria-valuenow');
-        if (v !== null) pcts.push({ pct: parseInt(v, 10), node: el });
-      });
-    }
+    // ── Strategy 2: inline width% divs inside containers near usage keywords ──
+    const widthPcts = [];
+    document.querySelectorAll('[style*="width"]').forEach(el => {
+      const m = el.style.width.match(/^(\d+(\.\d+)?)%$/);
+      if (m) {
+        const pct = Math.round(parseFloat(m[1]));
+        if (pct >= 0 && pct <= 100) widthPcts.push({ pct, el });
+      }
+    });
+
+    // ── Strategy 3: text pattern "XX% 使用済み" or number near セッション/モデル ──
+    const pctFromText = [];
+    texts.forEach(({ text }) => {
+      const m = text.match(/^(\d+)%?\s*使用済み$/) || text.match(/^(\d{1,3})%$/);
+      if (m) pctFromText.push(parseInt(m[1], 10));
+    });
+
+    // Pick best source
+    const pctSource =
+      pctFromText.length >= 2 ? pctFromText :
+      ariaBarValues.length >= 2 ? ariaBarValues :
+      widthPcts.length >= 2 ? widthPcts.map(x => x.pct) :
+      null;
+
+    if (pctSource && pctSource.length >= 1) setBar('sf', 'sp', pctSource[0]);
+    if (pctSource && pctSource.length >= 2) setBar('wf', 'wp', pctSource[1]);
 
     // ── Reset times ──
-    const resetNodes = textNodes(body, 'リセット');
-    const resets = resetNodes.map(n => n.nodeValue.trim());
+    const resetTexts = texts.filter(({ text }) => text.includes('リセット'));
+    const sr = shadowRoot.getElementById('sr');
+    const wr = shadowRoot.getElementById('wr');
+    if (sr && resetTexts[0]) sr.textContent = resetTexts[0].text;
+    if (wr && resetTexts[1]) wr.textContent = resetTexts[1].text;
 
     // ── Routine count ──
-    let routineText = '--';
-    const routineNodes = textNodes(body, 'ルーティン');
-    if (routineNodes.length > 0) {
-      const block = closestBlock(routineNodes[0], 8);
-      if (block) {
-        const parsed = parseRoutine(block.textContent);
-        if (parsed) routineText = parsed;
+    const rt = shadowRoot.getElementById('rt');
+    if (rt) {
+      // Look for "X / Y" or "X/Y" pattern near ルーティン
+      const routineIdx = texts.findIndex(({ text }) => text.includes('ルーティン'));
+      let found = null;
+      if (routineIdx >= 0) {
+        // Search nearby text nodes
+        for (let i = routineIdx; i < Math.min(routineIdx + 10, texts.length); i++) {
+          const m = texts[i].text.match(/(\d+)\s*[\/／]\s*(\d+)/);
+          if (m) { found = `${m[1]} / ${m[2]}`; break; }
+        }
+        // Also check parent container text
+        if (!found) {
+          const block = nearestBlock(texts[routineIdx].node, 8);
+          if (block) {
+            const m = block.textContent.match(/(\d+)\s*[\/／]\s*(\d+)/);
+            if (m) found = `${m[1]} / ${m[2]}`;
+          }
+        }
       }
+      // "まだルーティンを実行していません" → 0/?
+      if (!found && texts.some(({ text }) => text.includes('まだルーティン'))) {
+        // Try to find max from nearby numbers
+        if (routineIdx >= 0) {
+          const block = nearestBlock(texts[routineIdx].node, 8);
+          const nm = block && block.textContent.match(/(\d+)/);
+          found = nm ? `0 / ${nm[1]}` : '0';
+        }
+      }
+      if (found) rt.textContent = found;
     }
-    // Fallback: "まだルーティンを実行していません" → show 0/?
-    if (routineText === '--') {
-      const notYet = textNodes(body, 'まだルーティン');
-      if (notYet.length > 0) routineText = '0 / ?';
-    }
 
-    // ── Apply to overlay ──
-    if (!document.getElementById('cco-s-fill')) return;
-
-    if (pcts.length >= 1) applyBar('cco-s-fill', 'cco-s-pct', pcts[0].pct);
-    if (pcts.length >= 2) applyBar('cco-w-fill', 'cco-w-pct', pcts[1].pct);
-
-    const sReset = document.getElementById('cco-s-reset');
-    const wReset = document.getElementById('cco-w-reset');
-    if (sReset && resets[0]) sReset.textContent = resets[0];
-    if (wReset && resets[1]) wReset.textContent = resets[1];
-
-    const routineEl = document.getElementById('cco-routine');
-    if (routineEl) routineEl.textContent = routineText;
-
-    const updEl = document.getElementById('cco-updated');
-    if (updEl) {
+    // ── Timestamp ──
+    const ts = shadowRoot.getElementById('ts');
+    if (ts) {
       const now = new Date();
-      updEl.textContent = `更新: ${now.getHours()}:${String(now.getMinutes()).padStart(2, '0')}`;
+      ts.textContent = `更新 ${now.getHours()}:${String(now.getMinutes()).padStart(2, '0')}`;
     }
   }
 
-  // ── MutationObserver (throttled) ─────────────────────────────────────────────
+  // ── MutationObserver ─────────────────────────────────────────────────────────
 
   function startObserver() {
-    const obs = new MutationObserver(() => {
+    new MutationObserver(() => {
       clearTimeout(mutationThrottle);
-      mutationThrottle = setTimeout(scan, 800);
-    });
-    obs.observe(document.body, { childList: true, subtree: true, characterData: true });
+      mutationThrottle = setTimeout(scan, 600);
+    }).observe(document.body, { childList: true, subtree: true, characterData: true });
   }
 
   // ── Init ─────────────────────────────────────────────────────────────────────
