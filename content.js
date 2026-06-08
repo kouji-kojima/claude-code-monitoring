@@ -4,6 +4,7 @@
   if (document.getElementById('cco-host')) return;
 
   const RESCAN_MS = 30_000;
+  const CARD_W = 240;
   let shadowRoot, mutationThrottle, scanTimer;
 
   // ── Shadow DOM host ──────────────────────────────────────────────────────────
@@ -13,28 +14,26 @@
     host.id = 'cco-host';
     host.style.cssText = [
       'position:fixed', 'bottom:20px', 'right:20px',
-      'width:200px', 'z-index:2147483647',
-      'pointer-events:auto', 'all:unset',
-      'display:block'
+      `width:${CARD_W}px`, 'z-index:2147483647',
+      'pointer-events:auto', 'display:block'
     ].join(';');
     document.body.appendChild(host);
 
     shadowRoot = host.attachShadow({ mode: 'open' });
     shadowRoot.innerHTML = `
       <style>
-        :host { all: initial; display: block; }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
         #card {
-          width: 200px;
+          width: ${CARD_W}px;
           background: #1a1b2e;
           border: 1px solid #2e3058;
           border-radius: 10px;
-          padding: 8px 11px 9px;
+          padding: 8px 12px 10px;
           box-shadow: 0 4px 18px rgba(0,0,0,0.55);
           font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
           font-size: 11px;
           color: #c8c9e8;
           user-select: none;
-          box-sizing: border-box;
         }
         .hdr {
           display: flex;
@@ -63,15 +62,8 @@
         .body { display: flex; flex-direction: column; gap: 6px; }
         #card.min .body { display: none; }
         .row { display: flex; flex-direction: column; gap: 2px; }
-        .lbl {
-          font-size: 9.5px;
-          color: #6b6f9a;
-        }
-        .bar-row {
-          display: flex;
-          align-items: center;
-          gap: 5px;
-        }
+        .lbl { font-size: 9.5px; color: #6b6f9a; }
+        .bar-row { display: flex; align-items: center; gap: 5px; }
         .bar {
           flex: 1;
           height: 4px;
@@ -86,7 +78,7 @@
           transition: width 0.4s ease;
           width: 0%;
         }
-        .fill.warn  { background: #d97706; }
+        .fill.warn   { background: #d97706; }
         .fill.danger { background: #dc2626; }
         .pct {
           font-size: 11px;
@@ -95,27 +87,16 @@
           min-width: 28px;
           text-align: right;
         }
-        .sub {
-          font-size: 9px;
-          color: #4e5280;
-        }
+        .sub { font-size: 9px; color: #4e5280; }
         .div { height: 1px; background: #252748; }
         .rt-row {
           display: flex;
           align-items: center;
           justify-content: space-between;
         }
-        .rt-val {
-          font-size: 12px;
-          font-weight: 700;
-          color: #e0e1ff;
-        }
-        .ts {
-          font-size: 8.5px;
-          color: #353760;
-          text-align: right;
-          margin-top: 5px;
-        }
+        .rt-val { font-size: 12px; font-weight: 700; color: #e0e1ff; }
+        .ts { font-size: 8.5px; color: #353760; text-align: right; margin-top: 5px; }
+        .no-data { font-size: 9px; color: #3d4070; text-align: center; padding: 4px 0; }
       </style>
       <div id="card">
         <div class="hdr">
@@ -149,10 +130,9 @@
         </div>
       </div>`;
 
-    // Toggle
     let min = false;
     const card = shadowRoot.getElementById('card');
-    const tog = shadowRoot.getElementById('tog');
+    const tog  = shadowRoot.getElementById('tog');
     chrome.storage.local.get('cco_min', ({ cco_min }) => {
       if (cco_min) { min = true; card.classList.add('min'); tog.textContent = '+'; }
     });
@@ -164,26 +144,39 @@
     });
   }
 
-  // ── Data extraction ──────────────────────────────────────────────────────────
+  // ── Find usage panel container ───────────────────────────────────────────────
+  // Claude.ai renders usage stats inside a panel. We anchor on known heading text
+  // and walk up until we find a container that also holds a progress bar.
 
-  function allText(root) {
+  const PANEL_KEYWORDS = ['現在のセッション', 'プラン使用制限', 'すべてのモデル'];
+
+  function findUsagePanel() {
+    const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+    let n;
+    while ((n = walker.nextNode())) {
+      if (!PANEL_KEYWORDS.some(k => n.nodeValue.includes(k))) continue;
+      // Walk up from this text node looking for a container with progress bars
+      let el = n.parentElement;
+      for (let i = 0; i < 12 && el && el !== document.body; i++) {
+        const bars = el.querySelectorAll('[role="progressbar"], progress, meter');
+        if (bars.length >= 1) return el;
+        el = el.parentElement;
+      }
+    }
+    return null;
+  }
+
+  // ── Extract from scoped container ────────────────────────────────────────────
+
+  function textNodesIn(el) {
     const results = [];
-    const w = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+    const w = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
     let n;
     while ((n = w.nextNode())) {
       const v = n.nodeValue.trim();
-      if (v) results.push({ node: n, text: v });
+      if (v) results.push(v);
     }
     return results;
-  }
-
-  function nearestBlock(node, up = 6) {
-    let el = node.parentElement;
-    for (let i = 0; i < up && el && el !== document.body; i++) {
-      if (el.children.length > 1 || el.offsetHeight > 20) return el;
-      el = el.parentElement;
-    }
-    return node.parentElement;
   }
 
   function barClass(p) {
@@ -202,87 +195,69 @@
   function scan() {
     if (!shadowRoot) return;
 
-    const texts = allText(document.body);
+    const panel = findUsagePanel();
 
-    // ── Strategy 1: aria progressbars ──
-    const ariaBarValues = [];
-    document.querySelectorAll('[role="progressbar"]').forEach(el => {
-      const v = el.getAttribute('aria-valuenow');
-      if (v !== null) ariaBarValues.push(parseInt(v, 10));
-    });
+    let sPct = null, wPct = null, sReset = '', wReset = '', routine = '--';
 
-    // ── Strategy 2: inline width% divs inside containers near usage keywords ──
-    const widthPcts = [];
-    document.querySelectorAll('[style*="width"]').forEach(el => {
-      const m = el.style.width.match(/^(\d+(\.\d+)?)%$/);
-      if (m) {
-        const pct = Math.round(parseFloat(m[1]));
-        if (pct >= 0 && pct <= 100) widthPcts.push({ pct, el });
+    if (panel) {
+      // ── Progress bars inside the panel ──
+      const bars = Array.from(panel.querySelectorAll('[role="progressbar"], progress, meter'));
+      bars.forEach((bar, i) => {
+        const v = bar.getAttribute('aria-valuenow')
+               ?? bar.getAttribute('value')
+               ?? null;
+        const pct = v !== null ? Math.round(parseFloat(v)) : null;
+        if (pct === null || pct < 0 || pct > 100) return;
+        if (i === 0 && sPct === null) sPct = pct;
+        else if (i === 1 && wPct === null) wPct = pct;
+      });
+
+      // ── Percentage from text "XX% 使用済み" inside the panel ──
+      const texts = textNodesIn(panel);
+      const pctTexts = [];
+      texts.forEach(t => {
+        // Match "13% 使用済み" or standalone "13%"
+        const m = t.match(/^(\d{1,3})\s*%\s*使用済み$/)
+               || t.match(/^(\d{1,3})%$/);
+        if (m) pctTexts.push(parseInt(m[1], 10));
+      });
+      if (sPct === null && pctTexts.length >= 1) sPct = pctTexts[0];
+      if (wPct === null && pctTexts.length >= 2) wPct = pctTexts[1];
+
+      // ── Reset times ──
+      const resetTexts = texts.filter(t => t.includes('リセット'));
+      if (resetTexts[0]) sReset = resetTexts[0];
+      if (resetTexts[1]) wReset = resetTexts[1];
+
+      // ── Routine count ──
+      const allText = panel.textContent;
+      const routineM = allText.match(/(\d+)\s*[\/／]\s*(\d+)/);
+      if (routineM) {
+        routine = `${routineM[1]} / ${routineM[2]}`;
+      } else if (allText.includes('まだルーティン')) {
+        // Find the max number near ルーティン
+        const limM = allText.match(/(\d+)/g);
+        routine = limM ? `0 / ${limM[limM.length - 1]}` : '0';
       }
-    });
-
-    // ── Strategy 3: text pattern "XX% 使用済み" or number near セッション/モデル ──
-    const pctFromText = [];
-    texts.forEach(({ text }) => {
-      const m = text.match(/^(\d+)%?\s*使用済み$/) || text.match(/^(\d{1,3})%$/);
-      if (m) pctFromText.push(parseInt(m[1], 10));
-    });
-
-    // Pick best source
-    const pctSource =
-      pctFromText.length >= 2 ? pctFromText :
-      ariaBarValues.length >= 2 ? ariaBarValues :
-      widthPcts.length >= 2 ? widthPcts.map(x => x.pct) :
-      null;
-
-    if (pctSource && pctSource.length >= 1) setBar('sf', 'sp', pctSource[0]);
-    if (pctSource && pctSource.length >= 2) setBar('wf', 'wp', pctSource[1]);
-
-    // ── Reset times ──
-    const resetTexts = texts.filter(({ text }) => text.includes('リセット'));
-    const sr = shadowRoot.getElementById('sr');
-    const wr = shadowRoot.getElementById('wr');
-    if (sr && resetTexts[0]) sr.textContent = resetTexts[0].text;
-    if (wr && resetTexts[1]) wr.textContent = resetTexts[1].text;
-
-    // ── Routine count ──
-    const rt = shadowRoot.getElementById('rt');
-    if (rt) {
-      // Look for "X / Y" or "X/Y" pattern near ルーティン
-      const routineIdx = texts.findIndex(({ text }) => text.includes('ルーティン'));
-      let found = null;
-      if (routineIdx >= 0) {
-        // Search nearby text nodes
-        for (let i = routineIdx; i < Math.min(routineIdx + 10, texts.length); i++) {
-          const m = texts[i].text.match(/(\d+)\s*[\/／]\s*(\d+)/);
-          if (m) { found = `${m[1]} / ${m[2]}`; break; }
-        }
-        // Also check parent container text
-        if (!found) {
-          const block = nearestBlock(texts[routineIdx].node, 8);
-          if (block) {
-            const m = block.textContent.match(/(\d+)\s*[\/／]\s*(\d+)/);
-            if (m) found = `${m[1]} / ${m[2]}`;
-          }
-        }
-      }
-      // "まだルーティンを実行していません" → 0/?
-      if (!found && texts.some(({ text }) => text.includes('まだルーティン'))) {
-        // Try to find max from nearby numbers
-        if (routineIdx >= 0) {
-          const block = nearestBlock(texts[routineIdx].node, 8);
-          const nm = block && block.textContent.match(/(\d+)/);
-          found = nm ? `0 / ${nm[1]}` : '0';
-        }
-      }
-      if (found) rt.textContent = found;
     }
 
-    // ── Timestamp ──
+    // ── Apply to overlay ──
+    if (sPct !== null) setBar('sf', 'sp', sPct);
+    if (wPct !== null) setBar('wf', 'wp', wPct);
+
+    const sr = shadowRoot.getElementById('sr');
+    const wr = shadowRoot.getElementById('wr');
+    const rt = shadowRoot.getElementById('rt');
     const ts = shadowRoot.getElementById('ts');
+
+    if (sr) sr.textContent = sReset;
+    if (wr) wr.textContent = wReset;
+    if (rt) rt.textContent = routine;
     if (ts) {
       const now = new Date();
-      ts.textContent = `更新 ${now.getHours()}:${String(now.getMinutes()).padStart(2, '0')}`;
+      ts.textContent = panel
+        ? `更新 ${now.getHours()}:${String(now.getMinutes()).padStart(2, '0')}`
+        : '使用状況パネルを開いてください';
     }
   }
 
@@ -294,8 +269,6 @@
       mutationThrottle = setTimeout(scan, 600);
     }).observe(document.body, { childList: true, subtree: true, characterData: true });
   }
-
-  // ── Init ─────────────────────────────────────────────────────────────────────
 
   function init() {
     buildOverlay();
