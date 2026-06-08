@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "Claude Code Monitoring",
+  "name": "Claude Code Monitor",
   "version": "1.0.0",
-  "description": "Claude Code Monitoring Extension",
+  "description": "Claude Code の使用状況（セッション・週間制限・ルーティン数）を右下にオーバーレイ表示",
   "action": {
     "default_popup": "popup.html",
     "default_icon": {
@@ -16,5 +16,14 @@
     "48": "icons/icon48.png",
     "128": "icons/icon128.png"
   },
-  "permissions": []
+  "content_scripts": [
+    {
+      "matches": ["https://claude.ai/*"],
+      "js": ["content.js"],
+      "css": ["overlay.css"],
+      "run_at": "document_idle"
+    }
+  ],
+  "permissions": ["storage"],
+  "host_permissions": ["https://claude.ai/*"]
 }

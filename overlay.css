@@ -1,0 +1,135 @@
+#cco-overlay {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  z-index: 2147483647;
+  background: #1a1b2e;
+  border: 1px solid #2e3058;
+  border-radius: 12px;
+  padding: 10px 13px 12px;
+  min-width: 192px;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.5);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', sans-serif;
+  font-size: 11px;
+  color: #c8c9e8;
+  user-select: none;
+  transition: opacity 0.2s;
+}
+
+#cco-overlay.cco-minimized .cco-body {
+  display: none;
+}
+
+.cco-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 9px;
+}
+
+.cco-title {
+  font-size: 11px;
+  font-weight: 600;
+  color: #8b8fc8;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.cco-toggle {
+  background: none;
+  border: none;
+  color: #5a5e98;
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  padding: 0 0 0 6px;
+  transition: color 0.15s;
+}
+.cco-toggle:hover { color: #9b9fcc; }
+
+.cco-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.cco-item {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.cco-label {
+  font-size: 10px;
+  color: #7b7faa;
+  letter-spacing: 0.02em;
+}
+
+.cco-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.cco-bar {
+  flex: 1;
+  height: 5px;
+  background: #2e3058;
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.cco-bar-fill {
+  height: 100%;
+  border-radius: 3px;
+  transition: width 0.4s ease;
+  background: #4f46e5;
+}
+.cco-bar-fill.warn  { background: #d97706; }
+.cco-bar-fill.danger { background: #dc2626; }
+
+.cco-pct {
+  font-size: 11px;
+  font-weight: 600;
+  color: #e0e1ff;
+  min-width: 30px;
+  text-align: right;
+}
+
+.cco-reset {
+  font-size: 9.5px;
+  color: #5a6090;
+  margin-top: 1px;
+}
+
+.cco-divider {
+  height: 1px;
+  background: #2a2c50;
+  margin: 2px 0;
+}
+
+.cco-routine-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.cco-routine-count {
+  font-size: 12px;
+  font-weight: 700;
+  color: #e0e1ff;
+}
+
+.cco-no-data {
+  font-size: 10px;
+  color: #4a4e78;
+  text-align: center;
+  padding: 4px 0;
+}
+
+.cco-updated {
+  font-size: 9px;
+  color: #3d4070;
+  text-align: right;
+  margin-top: 6px;
+}
