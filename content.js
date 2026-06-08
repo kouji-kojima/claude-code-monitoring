@@ -146,11 +146,45 @@
     applyData(cached);
   });
 
+  // ── Probe API endpoints directly (content script has session cookies) ────────
+
+  const PROBE_PATHS = [
+    '/api/account/usage',
+    '/api/usage',
+    '/api/me',
+    '/api/me/usage',
+    '/api/bootstrap',
+    '/api/rate_limits',
+    '/api/organizations/me/usage',
+    '/v1/account/usage',
+    '/v1/me',
+    '/v1/usage',
+    '/v1/rate_limits',
+    '/v1/organizations/me/usage',
+  ];
+
+  async function probeEndpoints() {
+    console.log('[CCO] probing API endpoints...');
+    for (const path of PROBE_PATHS) {
+      try {
+        const res = await fetch('https://claude.ai' + path, { credentials: 'include' });
+        const text = await res.text();
+        console.log(`[CCO] probe ${path} → ${res.status}`, text.substring(0, 120));
+      } catch (e) {
+        console.log(`[CCO] probe ${path} → error:`, e.message);
+      }
+    }
+  }
+
   // ── Init ─────────────────────────────────────────────────────────────────────
 
   if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', buildOverlay);
+    document.addEventListener('DOMContentLoaded', () => {
+      buildOverlay();
+      setTimeout(probeEndpoints, 2000);
+    });
   } else {
     buildOverlay();
+    setTimeout(probeEndpoints, 2000);
   }
 })();

@@ -32,11 +32,12 @@
   // ── Parser / extractor ───────────────────────────────────────────────────────
 
   function tryParse(url, text) {
+    // Log raw response BEFORE any filtering
+    console.log('[CCO] raw:', url, '|', text ? text.substring(0, 80) : '(empty)');
     if (!text || (text[0] !== '{' && text[0] !== '[')) return;
     let data;
     try { data = JSON.parse(text); } catch (_) { return; }
 
-    // Debug: log every JSON API response so we can find the usage endpoint
     console.log('[CCO] API response:', url, data);
 
     const found = extract(data, 0);
