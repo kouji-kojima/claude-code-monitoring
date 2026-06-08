@@ -12,7 +12,7 @@
     try {
       const url = typeof args[0] === 'string' ? args[0] : (args[0]?.url ?? '');
       if (!/\.(js|css|png|jpg|webp|woff2?|svg|ico)(\?|$)/i.test(url)) {
-        res.clone().text().then(t => tryParse(t)).catch(() => {});
+        res.clone().text().then(t => tryParse(url, t)).catch(() => {});
       }
     } catch (_) {}
     return res;
@@ -22,18 +22,23 @@
 
   const _open = XMLHttpRequest.prototype.open;
   XMLHttpRequest.prototype.open = function (method, url, ...rest) {
+    this._cco_url = url;
     this.addEventListener('load', function () {
-      try { tryParse(this.responseText); } catch (_) {}
+      try { tryParse(this._cco_url || '', this.responseText); } catch (_) {}
     });
     return _open.call(this, method, url, ...rest);
   };
 
   // ── Parser / extractor ───────────────────────────────────────────────────────
 
-  function tryParse(text) {
+  function tryParse(url, text) {
     if (!text || (text[0] !== '{' && text[0] !== '[')) return;
     let data;
     try { data = JSON.parse(text); } catch (_) { return; }
+
+    // Debug: log every JSON API response so we can find the usage endpoint
+    console.debug('[CCO] API response:', url, data);
+
     const found = extract(data, 0);
     if (found && (found.session || found.weekly || found.routine)) {
       console.debug('[CCO] usage found:', found);
