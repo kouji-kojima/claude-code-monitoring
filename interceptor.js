@@ -37,11 +37,11 @@
     try { data = JSON.parse(text); } catch (_) { return; }
 
     // Debug: log every JSON API response so we can find the usage endpoint
-    console.debug('[CCO] API response:', url, data);
+    console.log('[CCO] API response:', url, data);
 
     const found = extract(data, 0);
     if (found && (found.session || found.weekly || found.routine)) {
-      console.debug('[CCO] usage found:', found);
+      console.log('[CCO] usage found:', found);
       POST(found);
     }
   }
