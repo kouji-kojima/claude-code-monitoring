@@ -24,5 +24,11 @@
     }
   ],
   "permissions": ["storage"],
-  "host_permissions": ["https://claude.ai/*"]
+  "host_permissions": ["https://claude.ai/*"],
+  "web_accessible_resources": [
+    {
+      "resources": ["injected.js"],
+      "matches": ["https://claude.ai/*"]
+    }
+  ]
 }
