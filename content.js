@@ -3,20 +3,9 @@
 
   if (document.getElementById('cco-host')) return;
 
-  const CARD_W   = 240;
-  const DOM_SCAN_MS = 15_000; // DOM fallback interval
-
-  let shadowRoot, mutationThrottle, domTimer;
+  const CARD_W = 240;
+  let shadowRoot;
   let cached = { session: null, weekly: null, routine: null };
-
-  // ── Inject page-context script ───────────────────────────────────────────────
-
-  function injectScript() {
-    const s = document.createElement('script');
-    s.src = chrome.runtime.getURL('injected.js');
-    s.onload = () => s.remove();
-    (document.head || document.documentElement).appendChild(s);
-  }
 
   // ── Shadow DOM overlay ───────────────────────────────────────────────────────
 
@@ -45,29 +34,17 @@
           color: #c8c9e8;
           user-select: none;
         }
-        .hdr {
-          display: flex; align-items: center;
-          justify-content: space-between; margin-bottom: 7px;
-        }
-        .title {
-          font-size: 10px; font-weight: 700; color: #7b7faa;
-          letter-spacing: 0.06em; text-transform: uppercase;
-        }
-        .toggle-btn {
-          background: none; border: none; color: #5a5e98;
-          cursor: pointer; font-size: 15px; line-height: 1; padding: 0;
-        }
-        .toggle-btn:hover { color: #9b9fcc; }
-        .body { display: flex; flex-direction: column; gap: 6px; }
-        #card.min .body { display: none; }
-        .row { display: flex; flex-direction: column; gap: 2px; }
-        .lbl { font-size: 9.5px; color: #6b6f9a; }
-        .bar-row { display: flex; align-items: center; gap: 5px; }
+        .hdr { display:flex; align-items:center; justify-content:space-between; margin-bottom:7px; }
+        .title { font-size:10px; font-weight:700; color:#7b7faa; letter-spacing:0.06em; text-transform:uppercase; }
+        .toggle-btn { background:none; border:none; color:#5a5e98; cursor:pointer; font-size:15px; line-height:1; padding:0; }
+        .toggle-btn:hover { color:#9b9fcc; }
+        .body { display:flex; flex-direction:column; gap:6px; }
+        #card.min .body { display:none; }
+        .row { display:flex; flex-direction:column; gap:2px; }
+        .lbl { font-size:9.5px; color:#6b6f9a; }
+        .bar-row { display:flex; align-items:center; gap:5px; }
         .bar { flex:1; height:4px; background:#2b2d52; border-radius:3px; overflow:hidden; }
-        .fill {
-          height:100%; border-radius:3px; background:#4f46e5;
-          transition: width 0.4s ease; width:0%;
-        }
+        .fill { height:100%; border-radius:3px; background:#4f46e5; transition:width 0.4s ease; width:0%; }
         .fill.warn   { background:#d97706; }
         .fill.danger { background:#dc2626; }
         .pct { font-size:11px; font-weight:700; color:#e0e1ff; min-width:28px; text-align:right; }
@@ -105,7 +82,7 @@
             <span class="lbl">ルーティン</span>
             <span class="rt-val" id="rt">--</span>
           </div>
-          <div class="ts" id="ts">API レスポンス待機中...</div>
+          <div class="ts" id="ts">待機中...</div>
         </div>
       </div>`;
 
@@ -123,13 +100,13 @@
     });
   }
 
-  // ── Apply data to overlay ────────────────────────────────────────────────────
+  // ── Apply data ───────────────────────────────────────────────────────────────
 
   function barClass(p) { return p >= 90 ? 'danger' : p >= 70 ? 'warn' : ''; }
 
   function setBar(fillId, pctId, pct) {
-    const f = shadowRoot && shadowRoot.getElementById(fillId);
-    const p = shadowRoot && shadowRoot.getElementById(pctId);
+    const f = shadowRoot.getElementById(fillId);
+    const p = shadowRoot.getElementById(pctId);
     if (!f || !p) return;
     f.style.width = pct + '%';
     f.className = 'fill ' + barClass(pct);
@@ -137,98 +114,43 @@
   }
 
   function applyData({ session, weekly, routine }) {
-    if (session) {
+    if (session != null) {
       setBar('sf', 'sp', session.pct);
       const sr = shadowRoot.getElementById('sr');
-      if (sr && session.reset) sr.textContent = session.reset;
+      if (sr) sr.textContent = session.reset || '';
     }
-    if (weekly) {
+    if (weekly != null) {
       setBar('wf', 'wp', weekly.pct);
       const wr = shadowRoot.getElementById('wr');
-      if (wr && weekly.reset) wr.textContent = weekly.reset;
+      if (wr) wr.textContent = weekly.reset || '';
     }
-    if (routine) {
+    if (routine != null) {
       const rt = shadowRoot.getElementById('rt');
       if (rt) rt.textContent = routine;
     }
-    const ts = shadowRoot && shadowRoot.getElementById('ts');
+    const ts = shadowRoot.getElementById('ts');
     if (ts) {
       const now = new Date();
       ts.textContent = `更新 ${now.getHours()}:${String(now.getMinutes()).padStart(2, '0')}`;
     }
   }
 
-  // ── Listen for injected.js postMessage ───────────────────────────────────────
+  // ── Listen for interceptor.js events ─────────────────────────────────────────
 
-  window.addEventListener('message', (ev) => {
-    if (!ev.data || !ev.data.__cco) return;
-    const { usage } = ev.data;
+  window.addEventListener('__cco_usage', (ev) => {
+    const usage = ev.detail;
     if (!usage) return;
-    if (usage.session) cached.session = usage.session;
-    if (usage.weekly)  cached.weekly  = usage.weekly;
-    if (usage.routine) cached.routine = usage.routine;
+    if (usage.session != null) cached.session = usage.session;
+    if (usage.weekly  != null) cached.weekly  = usage.weekly;
+    if (usage.routine != null) cached.routine = usage.routine;
     applyData(cached);
   });
 
-  // ── DOM fallback (only when panel is visible) ────────────────────────────────
-
-  const PANEL_ANCHORS = ['現在のセッション', 'プラン使用制限', 'すべてのモデル'];
-
-  function findUsagePanel() {
-    const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
-    let n;
-    while ((n = walker.nextNode())) {
-      if (!PANEL_ANCHORS.some(k => n.nodeValue.includes(k))) continue;
-      let el = n.parentElement;
-      for (let i = 0; i < 12 && el && el !== document.body; i++) {
-        if (el.querySelectorAll('[role="progressbar"], progress, meter').length >= 1) return el;
-        el = el.parentElement;
-      }
-    }
-    return null;
-  }
-
-  function domFallback() {
-    const panel = findUsagePanel();
-    if (!panel) return; // panel not open → skip silently
-
-    const texts = [];
-    const w = document.createTreeWalker(panel, NodeFilter.SHOW_TEXT);
-    let n;
-    while ((n = w.nextNode())) { const v = n.nodeValue.trim(); if (v) texts.push(v); }
-
-    const pctTexts = [];
-    texts.forEach(t => {
-      const m = t.match(/^(\d{1,3})\s*%\s*使用済み$/) || t.match(/^(\d{1,3})%$/);
-      if (m) pctTexts.push(parseInt(m[1], 10));
-    });
-    const resetTexts = texts.filter(t => t.includes('リセット'));
-    const routineM = panel.textContent.match(/(\d+)\s*[\/／]\s*(\d+)/);
-
-    const update = {};
-    if (pctTexts[0] !== undefined && !cached.session) update.session = { pct: pctTexts[0], reset: resetTexts[0] || '' };
-    if (pctTexts[1] !== undefined && !cached.weekly)  update.weekly  = { pct: pctTexts[1], reset: resetTexts[1] || '' };
-    if (routineM && !cached.routine) update.routine = `${routineM[1]} / ${routineM[2]}`;
-
-    if (Object.keys(update).length) {
-      Object.assign(cached, update);
-      applyData(cached);
-    }
-  }
-
   // ── Init ─────────────────────────────────────────────────────────────────────
 
-  function init() {
-    injectScript();
-    buildOverlay();
-    domTimer = setInterval(domFallback, DOM_SCAN_MS);
-    // Initial DOM scan after brief delay
-    setTimeout(domFallback, 2000);
-  }
-
   if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', () => setTimeout(init, 500));
+    document.addEventListener('DOMContentLoaded', buildOverlay);
   } else {
-    setTimeout(init, 500);
+    buildOverlay();
   }
 })();
