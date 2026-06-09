@@ -6,6 +6,7 @@
   const CARD_W = 240;
   let shadowRoot;
   let cached = { session: null, weekly: null };
+  let currentOrgId = null;
 
   // ── Shadow DOM overlay ───────────────────────────────────────────────────────
 
@@ -159,11 +160,33 @@
     }
   }
 
+  // ── 30秒ポーリング ───────────────────────────────────────────────────────────
+
+  async function pollNow() {
+    if (currentOrgId) {
+      const key = `/api/organizations/${currentOrgId}/rate_limits`;
+      try {
+        const res = await fetch('https://claude.ai' + key, { credentials: 'include' });
+        if (res.ok) {
+          const text = await res.text();
+          if (text && (text[0] === '{' || text[0] === '['))
+            window.dispatchEvent(new CustomEvent('__cco_raw', { detail: { url: key, text } }));
+          return;
+        }
+      } catch (_) {}
+    }
+    // org IDがまだない場合は一般エンドポイントにフォールバック
+    await probeEndpoints();
+  }
+
+  setInterval(pollNow, 30_000);
+
   // ── Probe org-specific usage endpoints ──────────────────────────────────────
 
   let orgProbed = false;
 
   async function probeOrgUsage(orgId) {
+    currentOrgId = orgId;
     if (orgProbed) return;
     orgProbed = true;
     const paths = [
