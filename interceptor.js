@@ -42,7 +42,7 @@
 
   // ── Parser / extractor ───────────────────────────────────────────────────────
 
-  const LOG_URLS = ['run-budget', 'usage', 'session', 'limit', 'quota', 'plan', 'entitle'];
+  const LOG_URLS = ['usage', 'limit', 'quota', 'plan', 'entitle', 'budget'];
 
   function tryParse(url, text) {
     if (!text || (text[0] !== '{' && text[0] !== '[')) return;
@@ -52,6 +52,16 @@
     // Targeted logging for candidate URLs
     if (LOG_URLS.some(kw => url.toLowerCase().includes(kw))) {
       console.log('[CCO] candidate response:', url, JSON.stringify(data).substring(0, 400));
+    }
+
+    // Special case: run-budget endpoint is a flat {limit, used} object for routines
+    if (url.includes('run-budget') && data && typeof data === 'object' && !Array.isArray(data)) {
+      const used  = parseInt(data.used  ?? data.count ?? 0, 10);
+      const limit = parseInt(data.limit ?? data.max   ?? 0, 10);
+      if (!isNaN(used) && !isNaN(limit) && limit > 0) {
+        POST({ routine: `${used} / ${limit}` });
+        return;
+      }
     }
 
     const found = extract(data, 0);
@@ -157,12 +167,18 @@
     return pct !== null ? { pct, reset: fmtReset(rv) } : null;
   }
 
+  function toNum(v) {
+    if (typeof v === 'number') return v;
+    if (typeof v === 'string') { const n = parseFloat(v); return isNaN(n) ? null : n; }
+    return null;
+  }
+
   function parseRoutine(obj) {
     if (!obj || typeof obj !== 'object') return null;
-    const used  = pickVal(obj, CNT_KEYS);
-    const limit = pickVal(obj, LIM_KEYS);
-    if (typeof used === 'number' && typeof limit === 'number')
-      return `${used} / ${limit}`;
+    const used  = toNum(pickVal(obj, CNT_KEYS));
+    const limit = toNum(pickVal(obj, LIM_KEYS));
+    if (used !== null && limit !== null && limit > 0)
+      return `${Math.round(used)} / ${Math.round(limit)}`;
     const pv = pickVal(obj, PCT_KEYS);
     const pct = pv !== undefined ? toPercent(pv) : null;
     if (pct !== null) return `${pct}%`;

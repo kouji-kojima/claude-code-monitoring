@@ -180,6 +180,7 @@
     orgProbed = true;
     const paths = [
       `/api/organizations/${orgId}`,
+      `/api/organizations/${orgId}/run-budget`,
       `/api/organizations/${orgId}/usage`,
       `/api/organizations/${orgId}/usage_limits`,
       `/api/organizations/${orgId}/limits`,
