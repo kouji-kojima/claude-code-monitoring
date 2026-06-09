@@ -42,10 +42,17 @@
 
   // ── Parser / extractor ───────────────────────────────────────────────────────
 
+  const LOG_URLS = ['run-budget', 'usage', 'session', 'limit', 'quota', 'plan', 'entitle'];
+
   function tryParse(url, text) {
     if (!text || (text[0] !== '{' && text[0] !== '[')) return;
     let data;
     try { data = JSON.parse(text); } catch (_) { return; }
+
+    // Targeted logging for candidate URLs
+    if (LOG_URLS.some(kw => url.toLowerCase().includes(kw))) {
+      console.log('[CCO] candidate response:', url, JSON.stringify(data).substring(0, 400));
+    }
 
     const found = extract(data, 0);
     if (found && (found.session || found.weekly || found.routine)) {
