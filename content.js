@@ -13,7 +13,7 @@
     const host = document.createElement('div');
     host.id = 'cco-host';
     host.style.cssText = [
-      'position:fixed', 'bottom:20px', 'right:20px',
+      'position:fixed', 'bottom:105px', 'left:8px',
       `width:${CARD_W}px`, 'z-index:2147483647', 'display:block'
     ].join(';');
     document.body.appendChild(host);
