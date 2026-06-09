@@ -146,35 +146,45 @@
     applyData(cached);
   });
 
-  // ── Probe API endpoints directly (content script has session cookies) ────────
+  // ── Probe org-specific usage endpoints ──────────────────────────────────────
 
-  const PROBE_PATHS = [
-    '/api/account/usage',
-    '/api/usage',
-    '/api/me',
-    '/api/me/usage',
-    '/api/bootstrap',
-    '/api/rate_limits',
-    '/api/organizations/me/usage',
-    '/v1/account/usage',
-    '/v1/me',
-    '/v1/usage',
-    '/v1/rate_limits',
-    '/v1/organizations/me/usage',
-  ];
+  let orgProbed = false;
 
-  async function probeEndpoints() {
-    console.log('[CCO] probing API endpoints...');
-    for (const path of PROBE_PATHS) {
+  async function probeOrgUsage(orgId) {
+    if (orgProbed) return;
+    orgProbed = true;
+    const paths = [
+      `/api/organizations/${orgId}/usage`,
+      `/api/organizations/${orgId}/limits`,
+      `/api/organizations/${orgId}/rate_limits`,
+      `/api/organizations/${orgId}/plan`,
+      `/api/organizations/${orgId}/plan_limits`,
+      `/api/organizations/${orgId}/subscription`,
+      `/api/organizations/${orgId}/billing`,
+      `/api/organizations/${orgId}/entitlements`,
+      `/api/organizations/${orgId}/members/me`,
+      `/v1/organizations/${orgId}/usage`,
+      `/v1/organizations/${orgId}/limits`,
+      `/v1/organizations/${orgId}/rate_limits`,
+      `/api/claude_code/organizations/${orgId}/usage`,
+      `/api/claude_code/organizations/${orgId}/limits`,
+    ];
+    console.log('[CCO] probing org usage endpoints for org:', orgId);
+    for (const path of paths) {
       try {
         const res = await fetch('https://claude.ai' + path, { credentials: 'include' });
         const text = await res.text();
-        console.log(`[CCO] probe ${path} → ${res.status}`, text.substring(0, 120));
+        console.log(`[CCO] probe ${path} → ${res.status} | ${text.substring(0, 150)}`);
       } catch (e) {
         console.log(`[CCO] probe ${path} → error:`, e.message);
       }
     }
   }
+
+  // Listen for org ID from interceptor
+  window.addEventListener('__cco_orgid', (ev) => {
+    probeOrgUsage(ev.detail);
+  });
 
   // ── Init ─────────────────────────────────────────────────────────────────────
 

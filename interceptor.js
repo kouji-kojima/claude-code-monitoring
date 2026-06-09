@@ -2,7 +2,16 @@
 (function () {
   'use strict';
 
-  const POST = (usage) => window.dispatchEvent(new CustomEvent('__cco_usage', { detail: usage }));
+  const POST     = (usage) => window.dispatchEvent(new CustomEvent('__cco_usage', { detail: usage }));
+  const POST_ORG = (id)    => window.dispatchEvent(new CustomEvent('__cco_orgid', { detail: id }));
+  let orgIdSent = false;
+
+  // ── Extract org ID from any intercepted URL ──────────────────────────────────
+  function maybeExtractOrgId(url) {
+    if (orgIdSent) return;
+    const m = url.match(/\/organizations\/([0-9a-f-]{36})\//i);
+    if (m) { orgIdSent = true; POST_ORG(m[1]); }
+  }
 
   // ── Fetch interceptor ────────────────────────────────────────────────────────
 
@@ -11,6 +20,7 @@
     const res = await _fetch(...args);
     try {
       const url = typeof args[0] === 'string' ? args[0] : (args[0]?.url ?? '');
+      maybeExtractOrgId(url);
       if (!/\.(js|css|png|jpg|webp|woff2?|svg|ico)(\?|$)/i.test(url)) {
         res.clone().text().then(t => tryParse(url, t)).catch(() => {});
       }
@@ -23,6 +33,7 @@
   const _open = XMLHttpRequest.prototype.open;
   XMLHttpRequest.prototype.open = function (method, url, ...rest) {
     this._cco_url = url;
+    maybeExtractOrgId(url);
     this.addEventListener('load', function () {
       try { tryParse(this._cco_url || '', this.responseText); } catch (_) {}
     });
