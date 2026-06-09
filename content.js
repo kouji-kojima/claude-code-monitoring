@@ -5,7 +5,7 @@
 
   const CARD_W = 240;
   let shadowRoot;
-  let cached = { session: null, weekly: null, routine: null };
+  let cached = { session: null, weekly: null };
 
   // ── Shadow DOM overlay ───────────────────────────────────────────────────────
 
@@ -50,8 +50,6 @@
         .pct { font-size:11px; font-weight:700; color:#e0e1ff; min-width:28px; text-align:right; }
         .sub { font-size:9px; color:#4e5280; }
         .div { height:1px; background:#252748; }
-        .rt-row { display:flex; align-items:center; justify-content:space-between; }
-        .rt-val { font-size:12px; font-weight:700; color:#e0e1ff; }
         .ts { font-size:8.5px; color:#353760; text-align:right; margin-top:5px; }
       </style>
       <div id="card">
@@ -76,11 +74,6 @@
               <span class="pct" id="wp">--%</span>
             </div>
             <span class="sub" id="wr"></span>
-          </div>
-          <div class="div"></div>
-          <div class="row rt-row">
-            <span class="lbl">ルーティン</span>
-            <span class="rt-val" id="rt">--</span>
           </div>
           <div class="ts" id="ts">待機中...</div>
         </div>
@@ -113,7 +106,7 @@
     p.textContent = pct + '%';
   }
 
-  function applyData({ session, weekly, routine }) {
+  function applyData({ session, weekly }) {
     if (session != null) {
       setBar('sf', 'sp', session.pct);
       const sr = shadowRoot.getElementById('sr');
@@ -123,10 +116,6 @@
       setBar('wf', 'wp', weekly.pct);
       const wr = shadowRoot.getElementById('wr');
       if (wr) wr.textContent = weekly.reset || '';
-    }
-    if (routine != null) {
-      const rt = shadowRoot.getElementById('rt');
-      if (rt) rt.textContent = routine;
     }
     const ts = shadowRoot.getElementById('ts');
     if (ts) {
@@ -142,7 +131,6 @@
     if (!usage) return;
     if (usage.session != null) cached.session = usage.session;
     if (usage.weekly  != null) cached.weekly  = usage.weekly;
-    if (usage.routine != null) cached.routine = usage.routine;
     applyData(cached);
   });
 
@@ -180,9 +168,6 @@
     orgProbed = true;
     const paths = [
       `/api/organizations/${orgId}`,
-      `/api/organizations/${orgId}/run-budget`,
-      `/api/claude_code/organizations/${orgId}/run-budget`,
-      `/v1/organizations/${orgId}/run-budget`,
       `/api/organizations/${orgId}/usage`,
       `/api/organizations/${orgId}/usage_limits`,
       `/api/organizations/${orgId}/limits`,
@@ -214,37 +199,25 @@
     }
   }
 
-  // Re-dispatch raw successful responses through the interceptor parser
+  // Re-dispatch raw successful responses through the parser
   window.addEventListener('__cco_raw', (ev) => {
     const { text } = ev.detail;
     if (!text) return;
     try {
       const data = JSON.parse(text);
-      // Detect run-budget response by unique field
-      if (data && typeof data === 'object' && !Array.isArray(data) && 'unified_billing_enabled' in data) {
-        const used  = parseInt(data.used  ?? data.count ?? 0, 10);
-        const limit = parseInt(data.limit ?? data.max   ?? 0, 10);
-        if (!isNaN(used) && !isNaN(limit) && limit > 0) {
-          cached.routine = `${used} / ${limit}`;
-          applyData(cached);
-          return;
-        }
-      }
       window.dispatchEvent(new CustomEvent('__cco_probe_data', { detail: data }));
     } catch (_) {}
   });
 
-  // ── Listen for probed data parsed by content side ────────────────────────────
+  // ── Listen for probed data ────────────────────────────────────────────────────
 
   window.addEventListener('__cco_probe_data', (ev) => {
     const data = ev.detail;
     if (!data) return;
-    // Try simple extraction inline
     const found = contentExtract(data, 0);
-    if (found && (found.session || found.weekly || found.routine)) {
+    if (found && (found.session || found.weekly)) {
       if (found.session != null) cached.session = found.session;
       if (found.weekly  != null) cached.weekly  = found.weekly;
-      if (found.routine != null) cached.routine = found.routine;
       applyData(cached);
     }
   });
@@ -261,7 +234,6 @@
                  'fivehour', 'five'];
   const W_KW = ['weekly', 'allmodels', 'allmodel', 'week', 'planperiod', 'planusage',
                  'sevenday', 'seven'];
-  const R_KW = ['routine', 'routines', 'automation', 'scheduled'];
   const PCT  = ['percent', 'percentage', 'usedpercent', 'usagepercent', 'fraction', 'ratio'];
   const RST  = ['reset', 'resetat', 'resets', 'expiresat', 'refreshat', 'nextreset', 'periodend'];
   const LIM  = ['limit', 'max', 'total', 'allowed', 'quota', 'messagelimit', 'messageslimit'];
@@ -295,23 +267,16 @@
     if (pct === null) { const r = pv2(obj,REM), t = pv2(obj,LIM); if (typeof r==='number'&&typeof t==='number'&&t>0) pct=Math.round((t-r)/t*100); }
     return pct !== null ? { pct, reset: fmtR2(pv2(obj, RST)) } : null;
   }
-  function parseR2(obj) {
-    if (!obj || typeof obj !== 'object') return null;
-    const u = pv2(obj,CNT), l = pv2(obj,LIM);
-    if (typeof u==='number'&&typeof l==='number') return `${u} / ${l}`;
-    return null;
-  }
   function contentExtract(data, depth) {
     if (depth > 10 || !data || typeof data !== 'object') return null;
     if (Array.isArray(data)) { for (const i of data) { const r=contentExtract(i,depth+1); if(r) return r; } return null; }
-    let session=null, weekly=null, routine=null;
+    let session=null, weekly=null;
     for (const [k,v] of Object.entries(data)) {
       const lk = lc2(k);
       if (S_KW.some(kw=>lk.includes(kw))) session = parseS2(v) ?? session;
       if (W_KW.some(kw=>lk.includes(kw))) weekly  = parseS2(v) ?? weekly;
-      if (R_KW.some(kw=>lk.includes(kw))) routine = parseR2(v) ?? routine;
     }
-    if (session||weekly||routine) return { session, weekly, routine };
+    if (session||weekly) return { session, weekly };
     for (const v of Object.values(data)) { if (v&&typeof v==='object') { const r=contentExtract(v,depth+1); if(r) return r; } }
     return null;
   }
