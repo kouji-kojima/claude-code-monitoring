@@ -42,7 +42,7 @@
 
   // ── Parser / extractor ───────────────────────────────────────────────────────
 
-  const LOG_URLS = ['usage', 'limit', 'quota', 'plan', 'entitle', 'budget'];
+  const LOG_URLS = ['usage', 'limit', 'quota', 'plan', 'entitle', 'budget', 'rate', 'session'];
 
   function tryParse(url, text) {
     if (!text || (text[0] !== '{' && text[0] !== '[')) return;
@@ -91,8 +91,10 @@
   }
 
   // keywords for matching field names (lowercase, no underscores)
-  const S_KEYS = ['session', 'currentsession', 'daily', 'billingperiod', 'currentperiod', 'thisperiod'];
-  const W_KEYS = ['weekly', 'allmodels', 'allmodel', 'week', 'planperiod', 'planusage'];
+  const S_KEYS = ['session', 'currentsession', 'daily', 'billingperiod', 'currentperiod', 'thisperiod',
+                   'fivehour', 'five'];   // rate_limits.five_hour → current session
+  const W_KEYS = ['weekly', 'allmodels', 'allmodel', 'week', 'planperiod', 'planusage',
+                   'sevenday', 'seven'];  // rate_limits.seven_day → weekly limit
   const R_KEYS = ['routine', 'routines', 'automation', 'scheduled', 'workflow'];
   const PCT_KEYS  = ['percent', 'percentage', 'usedpercent', 'usagepercent',
                      'fraction', 'ratio', 'consumed', 'utilization', 'saturation'];

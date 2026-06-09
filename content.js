@@ -246,8 +246,10 @@
 
   // ── Minimal content-side extractor (mirrors interceptor logic) ───────────────
 
-  const S_KW = ['session', 'currentsession', 'daily', 'billingperiod', 'currentperiod'];
-  const W_KW = ['weekly', 'allmodels', 'allmodel', 'week', 'planperiod', 'planusage'];
+  const S_KW = ['session', 'currentsession', 'daily', 'billingperiod', 'currentperiod',
+                 'fivehour', 'five'];
+  const W_KW = ['weekly', 'allmodels', 'allmodel', 'week', 'planperiod', 'planusage',
+                 'sevenday', 'seven'];
   const R_KW = ['routine', 'routines', 'automation', 'scheduled'];
   const PCT  = ['percent', 'percentage', 'usedpercent', 'usagepercent', 'fraction', 'ratio'];
   const RST  = ['reset', 'resetat', 'resets', 'expiresat', 'refreshat', 'nextreset', 'periodend'];
