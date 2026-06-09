@@ -22,6 +22,7 @@
       const url = typeof args[0] === 'string' ? args[0] : (args[0]?.url ?? '');
       maybeExtractOrgId(url);
       if (!/\.(js|css|png|jpg|webp|woff2?|svg|ico)(\?|$)/i.test(url)) {
+        console.log('[CCO] fetch intercepted:', url);
         res.clone().text().then(t => tryParse(url, t)).catch(() => {});
       }
     } catch (_) {}
