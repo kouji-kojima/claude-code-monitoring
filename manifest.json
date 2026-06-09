@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Claude Code Monitor",
   "version": "1.0.0",
-  "description": "Claude Code の使用状況（セッション・週間制限・ルーティン数）を右下にオーバーレイ表示",
+  "description": "Claude Code のセッション使用率・週間制限をサイドバーにリアルタイム表示",
   "action": {
     "default_popup": "popup.html",
     "default_icon": {

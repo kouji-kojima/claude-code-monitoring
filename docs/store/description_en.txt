@@ -1,0 +1,19 @@
+A Chrome extension that shows your Claude Code usage in real-time on the Claude.ai sidebar — no need to open the settings panel.
+
+■ Features
+
+· Session usage % (5-hour window) with progress bar
+· Weekly limit usage % (7-day window, all models combined) with progress bar
+· Time until reset displayed automatically (e.g., "Resets in 4h 8m")
+· Color-coded warnings: orange at 70%, red at 90%
+· One-click minimize
+· Always visible in the sidebar — never blocks the chat input
+
+■ Requirements
+
+· Google Chrome (Manifest V3)
+· Logged in to claude.ai
+
+■ Privacy
+
+No data is sent to any external server. All processing happens entirely in your browser.

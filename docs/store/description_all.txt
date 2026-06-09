@@ -1,0 +1,41 @@
+Claude.ai のサイドバーに Claude Code の使用状況をリアルタイム表示する Chrome 拡張機能です。設定パネルを開かなくても、現在のセッション残量と週間制限をひと目で確認できます。
+
+■ 機能
+
+・現在のセッション使用率（5時間ウィンドウ）をプログレスバーで表示
+・週間制限使用率（7日間・全モデル合計）をプログレスバーで表示
+・リセットまでの残り時間を自動計算（例：「4時間8分後にリセット」）
+・使用率 70% 超でオレンジ警告、90% 超でレッド警告
+・カードをワンクリックでミニマイズ可能
+・サイドバー下部に常時表示 — チャット入力を邪魔しない
+
+■ 動作条件
+
+・Google Chrome（Manifest V3 対応）
+・claude.ai へのログイン
+
+■ プライバシー
+
+外部サーバーへのデータ送信は一切行いません。すべての処理はブラウザ内で完結します。
+
+================================================================================
+
+A Chrome extension that shows your Claude Code usage in real-time on the Claude.ai sidebar — no need to open the settings panel.
+
+■ Features
+
+· Session usage % (5-hour window) with progress bar
+· Weekly limit usage % (7-day window, all models combined) with progress bar
+· Time until reset displayed automatically (e.g., "Resets in 4h 8m")
+· Color-coded warnings: orange at 70%, red at 90%
+· One-click minimize
+· Always visible in the sidebar — never blocks the chat input
+
+■ Requirements
+
+· Google Chrome (Manifest V3)
+· Logged in to claude.ai
+
+■ Privacy
+
+No data is sent to any external server. All processing happens entirely in your browser.
