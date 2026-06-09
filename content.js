@@ -181,6 +181,8 @@
     const paths = [
       `/api/organizations/${orgId}`,
       `/api/organizations/${orgId}/run-budget`,
+      `/api/claude_code/organizations/${orgId}/run-budget`,
+      `/v1/organizations/${orgId}/run-budget`,
       `/api/organizations/${orgId}/usage`,
       `/api/organizations/${orgId}/usage_limits`,
       `/api/organizations/${orgId}/limits`,
@@ -218,7 +220,16 @@
     if (!text) return;
     try {
       const data = JSON.parse(text);
-      // Dispatch as usage event so interceptor-style parsing can pick it up
+      // Detect run-budget response by unique field
+      if (data && typeof data === 'object' && !Array.isArray(data) && 'unified_billing_enabled' in data) {
+        const used  = parseInt(data.used  ?? data.count ?? 0, 10);
+        const limit = parseInt(data.limit ?? data.max   ?? 0, 10);
+        if (!isNaN(used) && !isNaN(limit) && limit > 0) {
+          cached.routine = `${used} / ${limit}`;
+          applyData(cached);
+          return;
+        }
+      }
       window.dispatchEvent(new CustomEvent('__cco_probe_data', { detail: data }));
     } catch (_) {}
   });

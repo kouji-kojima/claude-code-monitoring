@@ -54,8 +54,10 @@
       console.log('[CCO] candidate response:', url, JSON.stringify(data).substring(0, 400));
     }
 
-    // Special case: run-budget endpoint is a flat {limit, used} object for routines
-    if (url.includes('run-budget') && data && typeof data === 'object' && !Array.isArray(data)) {
+    // Detect run-budget response by unique field or URL pattern
+    const isRunBudget = url.includes('run-budget') ||
+      (data && typeof data === 'object' && !Array.isArray(data) && 'unified_billing_enabled' in data);
+    if (isRunBudget && data && typeof data === 'object' && !Array.isArray(data)) {
       const used  = parseInt(data.used  ?? data.count ?? 0, 10);
       const limit = parseInt(data.limit ?? data.max   ?? 0, 10);
       if (!isNaN(used) && !isNaN(limit) && limit > 0) {
