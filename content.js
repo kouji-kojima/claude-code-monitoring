@@ -146,6 +146,31 @@
     applyData(cached);
   });
 
+  // ── Probe general (non-org-specific) usage endpoints ────────────────────────
+
+  async function probeEndpoints() {
+    const paths = [
+      '/api/account',
+      '/api/me',
+      '/api/usage',
+      '/api/account/usage',
+      '/api/bootstrap',
+      '/api/user',
+      '/api/profile',
+    ];
+    for (const path of paths) {
+      try {
+        const res = await fetch('https://claude.ai' + path, { credentials: 'include' });
+        if (res.ok) {
+          const text = await res.text();
+          if (text && (text[0] === '{' || text[0] === '[')) {
+            window.dispatchEvent(new CustomEvent('__cco_raw', { detail: { url: path, text } }));
+          }
+        }
+      } catch (_) {}
+    }
+  }
+
   // ── Probe org-specific usage endpoints ──────────────────────────────────────
 
   let orgProbed = false;
@@ -154,7 +179,9 @@
     if (orgProbed) return;
     orgProbed = true;
     const paths = [
+      `/api/organizations/${orgId}`,
       `/api/organizations/${orgId}/usage`,
+      `/api/organizations/${orgId}/usage_limits`,
       `/api/organizations/${orgId}/limits`,
       `/api/organizations/${orgId}/rate_limits`,
       `/api/organizations/${orgId}/plan`,
@@ -162,29 +189,118 @@
       `/api/organizations/${orgId}/subscription`,
       `/api/organizations/${orgId}/billing`,
       `/api/organizations/${orgId}/entitlements`,
+      `/api/organizations/${orgId}/active_entitlements`,
+      `/api/organizations/${orgId}/member_limits`,
       `/api/organizations/${orgId}/members/me`,
+      `/api/organizations/${orgId}/usage_stats`,
       `/v1/organizations/${orgId}/usage`,
       `/v1/organizations/${orgId}/limits`,
-      `/v1/organizations/${orgId}/rate_limits`,
       `/api/claude_code/organizations/${orgId}/usage`,
       `/api/claude_code/organizations/${orgId}/limits`,
     ];
-    console.log('[CCO] probing org usage endpoints for org:', orgId);
     for (const path of paths) {
       try {
         const res = await fetch('https://claude.ai' + path, { credentials: 'include' });
-        const text = await res.text();
-        console.log(`[CCO] probe ${path} → ${res.status} | ${text.substring(0, 150)}`);
-      } catch (e) {
-        console.log(`[CCO] probe ${path} → error:`, e.message);
-      }
+        if (res.ok) {
+          const text = await res.text();
+          if (text && (text[0] === '{' || text[0] === '[')) {
+            window.dispatchEvent(new CustomEvent('__cco_raw', { detail: { url: path, text } }));
+          }
+        }
+      } catch (_) {}
     }
   }
 
-  // Listen for org ID from interceptor
+  // Re-dispatch raw successful responses through the interceptor parser
+  window.addEventListener('__cco_raw', (ev) => {
+    const { text } = ev.detail;
+    if (!text) return;
+    try {
+      const data = JSON.parse(text);
+      // Dispatch as usage event so interceptor-style parsing can pick it up
+      window.dispatchEvent(new CustomEvent('__cco_probe_data', { detail: data }));
+    } catch (_) {}
+  });
+
+  // ── Listen for probed data parsed by content side ────────────────────────────
+
+  window.addEventListener('__cco_probe_data', (ev) => {
+    const data = ev.detail;
+    if (!data) return;
+    // Try simple extraction inline
+    const found = contentExtract(data, 0);
+    if (found && (found.session || found.weekly || found.routine)) {
+      if (found.session != null) cached.session = found.session;
+      if (found.weekly  != null) cached.weekly  = found.weekly;
+      if (found.routine != null) cached.routine = found.routine;
+      applyData(cached);
+    }
+  });
+
+  // ── Listen for org ID from interceptor ──────────────────────────────────────
+
   window.addEventListener('__cco_orgid', (ev) => {
     probeOrgUsage(ev.detail);
   });
+
+  // ── Minimal content-side extractor (mirrors interceptor logic) ───────────────
+
+  const S_KW = ['session', 'currentsession', 'daily', 'billingperiod', 'currentperiod'];
+  const W_KW = ['weekly', 'allmodels', 'allmodel', 'week', 'planperiod', 'planusage'];
+  const R_KW = ['routine', 'routines', 'automation', 'scheduled'];
+  const PCT  = ['percent', 'percentage', 'usedpercent', 'usagepercent', 'fraction', 'ratio'];
+  const RST  = ['reset', 'resetat', 'resets', 'expiresat', 'refreshat', 'nextreset', 'periodend'];
+  const LIM  = ['limit', 'max', 'total', 'allowed', 'quota', 'messagelimit', 'messageslimit'];
+  const CNT  = ['used', 'count', 'executed', 'runs', 'completed', 'messagesused', 'tokensused'];
+  const REM  = ['remaining', 'left', 'available', 'balance', 'messagesremaining'];
+
+  function lc2(k) { return k.toLowerCase().replace(/_/g, ''); }
+  function pv2(obj, keys) {
+    for (const [k, v] of Object.entries(obj)) {
+      if (keys.some(kw => lc2(k).includes(kw))) return v;
+    }
+  }
+  function toPct2(v) {
+    if (typeof v === 'number') return v > 1 ? Math.round(v) : Math.round(v * 100);
+    if (typeof v === 'string') { const m = v.match(/^(\d+\.?\d*)\s*%?$/); if (m) { const n = +m[1]; return n <= 1 ? Math.round(n*100) : Math.round(n); } }
+    return null;
+  }
+  function fmtR2(v) {
+    if (!v) return '';
+    const d = typeof v === 'number' ? new Date(v > 1e10 ? v : v*1000) : new Date(v);
+    if (isNaN(d)) return '';
+    const diff = d - Date.now(); if (diff < 0) return 'まもなくリセット';
+    const h = Math.floor(diff/3600000), m = Math.floor((diff%3600000)/60000);
+    return h > 0 ? `${h}時間${m}分後にリセット` : `${m}分後にリセット`;
+  }
+  function parseS2(obj) {
+    if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return null;
+    let pct = null;
+    const pv = pv2(obj, PCT); pct = pv !== undefined ? toPct2(pv) : null;
+    if (pct === null) { const u = pv2(obj,CNT), t = pv2(obj,LIM); if (typeof u==='number'&&typeof t==='number'&&t>0) pct=Math.round(u/t*100); }
+    if (pct === null) { const r = pv2(obj,REM), t = pv2(obj,LIM); if (typeof r==='number'&&typeof t==='number'&&t>0) pct=Math.round((t-r)/t*100); }
+    return pct !== null ? { pct, reset: fmtR2(pv2(obj, RST)) } : null;
+  }
+  function parseR2(obj) {
+    if (!obj || typeof obj !== 'object') return null;
+    const u = pv2(obj,CNT), l = pv2(obj,LIM);
+    if (typeof u==='number'&&typeof l==='number') return `${u} / ${l}`;
+    return null;
+  }
+  function contentExtract(data, depth) {
+    if (depth > 10 || !data || typeof data !== 'object') return null;
+    if (Array.isArray(data)) { for (const i of data) { const r=contentExtract(i,depth+1); if(r) return r; } return null; }
+    let session=null, weekly=null, routine=null;
+    for (const [k,v] of Object.entries(data)) {
+      const lk = lc2(k);
+      if (S_KW.some(kw=>lk.includes(kw))) session = parseS2(v) ?? session;
+      if (W_KW.some(kw=>lk.includes(kw))) weekly  = parseS2(v) ?? weekly;
+      if (R_KW.some(kw=>lk.includes(kw))) routine = parseR2(v) ?? routine;
+    }
+    if (session||weekly||routine) return { session, weekly, routine };
+    for (const v of Object.values(data)) { if (v&&typeof v==='object') { const r=contentExtract(v,depth+1); if(r) return r; } }
+    return null;
+  }
 
   // ── Init ─────────────────────────────────────────────────────────────────────
 

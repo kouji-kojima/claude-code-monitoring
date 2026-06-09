@@ -43,39 +43,55 @@
   // ── Parser / extractor ───────────────────────────────────────────────────────
 
   function tryParse(url, text) {
-    // Log raw response BEFORE any filtering
-    console.log('[CCO] raw:', url, '|', text ? text.substring(0, 80) : '(empty)');
     if (!text || (text[0] !== '{' && text[0] !== '[')) return;
     let data;
     try { data = JSON.parse(text); } catch (_) { return; }
 
-    console.log('[CCO] API response:', url, data);
-
     const found = extract(data, 0);
     if (found && (found.session || found.weekly || found.routine)) {
-      console.log('[CCO] usage found:', found);
       POST(found);
     }
   }
 
-  // keywords for matching field names (lowercase)
-  const S_KEYS  = ['session', 'current_session', 'currentsession', 'daily'];
-  const W_KEYS  = ['weekly', 'all_models', 'allmodels', 'allmodel', 'week'];
-  const R_KEYS  = ['routine', 'routines', 'automation', 'scheduled'];
-  const PCT_KEYS  = ['percent', 'percentage', 'used_percent', 'usedpercent',
-                     'usage_percent', 'usagepercent', 'fraction', 'ratio',
-                     'consumed', 'used', 'usage'];
-  const RST_KEYS  = ['reset', 'reset_at', 'resetat', 'resets_at', 'resets',
-                     'expires', 'expires_at', 'expiresat', 'refresh_at',
-                     'refreshat', 'next_reset', 'nextreset'];
-  const LIM_KEYS  = ['limit', 'max', 'total', 'allowed', 'quota', 'maximum'];
-  const CNT_KEYS  = ['used', 'count', 'executed', 'runs', 'completed'];
+  // ── Window-state checker (Next.js / React hydration data) ───────────────────
+
+  function checkWindowState() {
+    try {
+      const nd = window.__NEXT_DATA__;
+      if (nd) tryParse('__NEXT_DATA__', JSON.stringify(nd));
+    } catch (_) {}
+    try {
+      const qs = window.__reactQueryState__ || window.__REACT_QUERY_STATE__;
+      if (qs) tryParse('__reactQueryState__', JSON.stringify(qs));
+    } catch (_) {}
+  }
+
+  // Run after page has hydrated
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', checkWindowState);
+  } else {
+    setTimeout(checkWindowState, 500);
+  }
+
+  // keywords for matching field names (lowercase, no underscores)
+  const S_KEYS = ['session', 'currentsession', 'daily', 'billingperiod', 'currentperiod', 'thisperiod'];
+  const W_KEYS = ['weekly', 'allmodels', 'allmodel', 'week', 'planperiod', 'planusage'];
+  const R_KEYS = ['routine', 'routines', 'automation', 'scheduled', 'workflow'];
+  const PCT_KEYS  = ['percent', 'percentage', 'usedpercent', 'usagepercent',
+                     'fraction', 'ratio', 'consumed', 'utilization', 'saturation'];
+  const RST_KEYS  = ['reset', 'resetat', 'resets', 'expiresat', 'refreshat',
+                     'nextreset', 'periodend', 'until', 'endat'];
+  const LIM_KEYS  = ['limit', 'max', 'total', 'allowed', 'quota', 'maximum',
+                     'messagelimit', 'tokenlimit', 'messageslimit'];
+  const CNT_KEYS  = ['used', 'count', 'executed', 'runs', 'completed',
+                     'messagesused', 'tokensused', 'messagecount'];
+  const REM_KEYS  = ['remaining', 'left', 'available', 'balance', 'messagesremaining'];
 
   function lc(k) { return k.toLowerCase().replace(/_/g, ''); }
 
   function pickVal(obj, keys) {
     for (const [k, v] of Object.entries(obj)) {
-      if (keys.some(kw => lc(k).includes(lc(kw)))) return v;
+      if (keys.some(kw => lc(k).includes(kw))) return v;
     }
     return undefined;
   }
@@ -107,9 +123,29 @@
 
   function parseSection(obj) {
     if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return null;
-    // Direct percent field
+
+    // 1. Direct percent field
     const pv = pickVal(obj, PCT_KEYS);
-    const pct = pv !== undefined ? toPercent(pv) : null;
+    let pct = pv !== undefined ? toPercent(pv) : null;
+
+    // 2. Compute from used/total
+    if (pct === null) {
+      const used  = pickVal(obj, CNT_KEYS);
+      const total = pickVal(obj, LIM_KEYS);
+      if (typeof used === 'number' && typeof total === 'number' && total > 0) {
+        pct = Math.round((used / total) * 100);
+      }
+    }
+
+    // 3. Compute from remaining/total
+    if (pct === null) {
+      const rem   = pickVal(obj, REM_KEYS);
+      const total = pickVal(obj, LIM_KEYS);
+      if (typeof rem === 'number' && typeof total === 'number' && total > 0) {
+        pct = Math.round(((total - rem) / total) * 100);
+      }
+    }
+
     const rv = pickVal(obj, RST_KEYS);
     return pct !== null ? { pct, reset: fmtReset(rv) } : null;
   }
@@ -120,7 +156,6 @@
     const limit = pickVal(obj, LIM_KEYS);
     if (typeof used === 'number' && typeof limit === 'number')
       return `${used} / ${limit}`;
-    // percent only
     const pv = pickVal(obj, PCT_KEYS);
     const pct = pv !== undefined ? toPercent(pv) : null;
     if (pct !== null) return `${pct}%`;
@@ -130,7 +165,6 @@
   function extract(data, depth) {
     if (depth > 10 || !data || typeof data !== 'object') return null;
 
-    // If it's an array, search each element
     if (Array.isArray(data)) {
       for (const item of data) {
         const r = extract(item, depth + 1);
@@ -143,13 +177,13 @@
 
     for (const [k, v] of Object.entries(data)) {
       const lk = lc(k);
-      if (S_KEYS.some(kw => lk.includes(lw(kw)))) {
+      if (S_KEYS.some(kw => lk.includes(kw))) {
         session = parseSection(v) ?? session;
       }
-      if (W_KEYS.some(kw => lk.includes(lw(kw)))) {
+      if (W_KEYS.some(kw => lk.includes(kw))) {
         weekly = parseSection(v) ?? weekly;
       }
-      if (R_KEYS.some(kw => lk.includes(lw(kw)))) {
+      if (R_KEYS.some(kw => lk.includes(kw))) {
         routine = parseRoutine(v) ?? routine;
       }
     }
@@ -165,6 +199,4 @@
     }
     return null;
   }
-
-  function lw(s) { return s.replace(/_/g, ''); }
 })();
