@@ -146,7 +146,7 @@
         return;
       }
       cco_history.push({ t: now, s, w, model: currentModel });
-      if (cco_history.length > 500) cco_history.splice(0, cco_history.length - 500);
+      if (cco_history.length > 20160) cco_history.splice(0, cco_history.length - 20160);
       chrome.storage.local.set({
         cco_history,
         cco_current: { session: cached.session, weekly: cached.weekly, model: currentModel, t: now },
