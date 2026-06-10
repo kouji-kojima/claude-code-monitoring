@@ -281,7 +281,6 @@
   const RST  = ['reset', 'resetat', 'resets', 'expiresat', 'refreshat', 'nextreset', 'periodend'];
   const LIM  = ['limit', 'max', 'total', 'allowed', 'quota', 'messagelimit', 'messageslimit'];
   const CNT  = ['used', 'count', 'executed', 'runs', 'completed', 'messagesused', 'tokensused'];
-  const REM  = ['remaining', 'left', 'available', 'balance', 'messagesremaining'];
 
   function lc2(k) { return k.toLowerCase().replace(/_/g, ''); }
   function pv2(obj, keys) {
@@ -307,7 +306,6 @@
     let pct = null;
     const pv = pv2(obj, PCT); pct = pv !== undefined ? toPct2(pv) : null;
     if (pct === null) { const u = pv2(obj,CNT), t = pv2(obj,LIM); if (typeof u==='number'&&typeof t==='number'&&t>0) pct=Math.round(u/t*100); }
-    if (pct === null) { const r = pv2(obj,REM), t = pv2(obj,LIM); if (typeof r==='number'&&typeof t==='number'&&t>0) pct=Math.round((t-r)/t*100); }
     return pct !== null ? { pct, reset: fmtR2(pv2(obj, RST)) } : null;
   }
   function contentExtract(data, depth) {

@@ -103,7 +103,6 @@
                      'messagelimit', 'tokenlimit', 'messageslimit'];
   const CNT_KEYS  = ['used', 'count', 'executed', 'runs', 'completed',
                      'messagesused', 'tokensused', 'messagecount'];
-  const REM_KEYS  = ['remaining', 'left', 'available', 'balance', 'messagesremaining'];
 
   function lc(k) { return k.toLowerCase().replace(/_/g, ''); }
 
@@ -148,12 +147,6 @@
       const total = pickVal(obj, LIM_KEYS);
       if (typeof used === 'number' && typeof total === 'number' && total > 0)
         pct = Math.round((used / total) * 100);
-    }
-    if (pct === null) {
-      const rem   = pickVal(obj, REM_KEYS);
-      const total = pickVal(obj, LIM_KEYS);
-      if (typeof rem === 'number' && typeof total === 'number' && total > 0)
-        pct = Math.round(((total - rem) / total) * 100);
     }
     const rv = pickVal(obj, RST_KEYS);
     return pct !== null ? { pct, reset: fmtReset(rv) } : null;
