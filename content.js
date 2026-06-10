@@ -7,6 +7,7 @@
   let shadowRoot;
   let cached = { session: null, weekly: null };
   let currentOrgId = null;
+  let currentModel  = null;
 
   // ── Shadow DOM overlay ───────────────────────────────────────────────────────
 
@@ -123,6 +124,34 @@
       const now = new Date();
       ts.textContent = `更新 ${now.getHours()}:${String(now.getMinutes()).padStart(2, '0')}`;
     }
+    saveSnapshot();
+  }
+
+  // ── History snapshot ─────────────────────────────────────────────────────────
+
+  function saveSnapshot() {
+    const s = cached.session?.pct ?? null;
+    const w = cached.weekly?.pct  ?? null;
+    if (s === null && w === null) return;
+
+    chrome.storage.local.get(['cco_history'], ({ cco_history = [] }) => {
+      const last = cco_history[cco_history.length - 1];
+      const now  = Date.now();
+      if (last && last.s === s && last.w === w && (now - last.t) < 5 * 60 * 1000) {
+        // Values unchanged and recent — just update current state
+        chrome.storage.local.set({ cco_current: {
+          session: cached.session, weekly: cached.weekly,
+          model: currentModel, t: now,
+        }});
+        return;
+      }
+      cco_history.push({ t: now, s, w, model: currentModel });
+      if (cco_history.length > 500) cco_history.splice(0, cco_history.length - 500);
+      chrome.storage.local.set({
+        cco_history,
+        cco_current: { session: cached.session, weekly: cached.weekly, model: currentModel, t: now },
+      });
+    });
   }
 
   // ── Listen for interceptor.js events ─────────────────────────────────────────
@@ -135,26 +164,24 @@
     applyData(cached);
   });
 
+  window.addEventListener('__cco_model', (ev) => {
+    if (ev.detail) currentModel = ev.detail;
+  });
+
   // ── Probe general (non-org-specific) usage endpoints ────────────────────────
 
   async function probeEndpoints() {
     const paths = [
-      '/api/account',
-      '/api/me',
-      '/api/usage',
-      '/api/account/usage',
-      '/api/bootstrap',
-      '/api/user',
-      '/api/profile',
+      '/api/account', '/api/me', '/api/usage',
+      '/api/account/usage', '/api/bootstrap', '/api/user', '/api/profile',
     ];
     for (const path of paths) {
       try {
         const res = await fetch('https://claude.ai' + path, { credentials: 'include' });
         if (res.ok) {
           const text = await res.text();
-          if (text && (text[0] === '{' || text[0] === '[')) {
+          if (text && (text[0] === '{' || text[0] === '['))
             window.dispatchEvent(new CustomEvent('__cco_raw', { detail: { url: path, text } }));
-          }
         }
       } catch (_) {}
     }
@@ -169,13 +196,13 @@
         const res = await fetch('https://claude.ai' + key, { credentials: 'include' });
         if (res.ok) {
           const text = await res.text();
-          if (text && (text[0] === '{' || text[0] === '['))
+          if (text && (text[0] === '{' || text[0] === '[')) {
             window.dispatchEvent(new CustomEvent('__cco_raw', { detail: { url: key, text } }));
-          return;
+            return;
+          }
         }
       } catch (_) {}
     }
-    // org IDがまだない場合は一般エンドポイントにフォールバック
     await probeEndpoints();
   }
 
@@ -214,9 +241,8 @@
         const res = await fetch('https://claude.ai' + path, { credentials: 'include' });
         if (res.ok) {
           const text = await res.text();
-          if (text && (text[0] === '{' || text[0] === '[')) {
+          if (text && (text[0] === '{' || text[0] === '['))
             window.dispatchEvent(new CustomEvent('__cco_raw', { detail: { url: path, text } }));
-          }
         }
       } catch (_) {}
     }
@@ -232,8 +258,6 @@
     } catch (_) {}
   });
 
-  // ── Listen for probed data ────────────────────────────────────────────────────
-
   window.addEventListener('__cco_probe_data', (ev) => {
     const data = ev.detail;
     if (!data) return;
@@ -245,18 +269,14 @@
     }
   });
 
-  // ── Listen for org ID from interceptor ──────────────────────────────────────
-
   window.addEventListener('__cco_orgid', (ev) => {
     probeOrgUsage(ev.detail);
   });
 
-  // ── Minimal content-side extractor (mirrors interceptor logic) ───────────────
+  // ── Minimal content-side extractor ───────────────────────────────────────────
 
-  const S_KW = ['session', 'currentsession', 'daily', 'billingperiod', 'currentperiod',
-                 'fivehour', 'five'];
-  const W_KW = ['weekly', 'allmodels', 'allmodel', 'week', 'planperiod', 'planusage',
-                 'sevenday', 'seven'];
+  const S_KW = ['session', 'currentsession', 'daily', 'billingperiod', 'currentperiod', 'fivehour', 'five'];
+  const W_KW = ['weekly', 'allmodels', 'allmodel', 'week', 'planperiod', 'planusage', 'sevenday', 'seven'];
   const PCT  = ['percent', 'percentage', 'usedpercent', 'usagepercent', 'fraction', 'ratio'];
   const RST  = ['reset', 'resetat', 'resets', 'expiresat', 'refreshat', 'nextreset', 'periodend'];
   const LIM  = ['limit', 'max', 'total', 'allowed', 'quota', 'messagelimit', 'messageslimit'];

@@ -2,21 +2,34 @@
 (function () {
   'use strict';
 
-  const POST     = (usage) => window.dispatchEvent(new CustomEvent('__cco_usage', { detail: usage }));
-  const POST_ORG = (id)    => window.dispatchEvent(new CustomEvent('__cco_orgid', { detail: id }));
+  const POST       = (usage) => window.dispatchEvent(new CustomEvent('__cco_usage',  { detail: usage }));
+  const POST_ORG   = (id)    => window.dispatchEvent(new CustomEvent('__cco_orgid',  { detail: id }));
+  const POST_MODEL = (model) => window.dispatchEvent(new CustomEvent('__cco_model',  { detail: model }));
   let orgIdSent = false;
 
-  // ── Extract org ID from any intercepted URL ──────────────────────────────────
   function maybeExtractOrgId(url) {
     if (orgIdSent) return;
     const m = url.match(/\/organizations\/([0-9a-f-]{36})\//i);
     if (m) { orgIdSent = true; POST_ORG(m[1]); }
   }
 
+  function maybeExtractModel(body) {
+    if (!body || typeof body !== 'string') return;
+    try {
+      const d = JSON.parse(body);
+      if (d && typeof d.model === 'string' && d.model.includes('claude')) POST_MODEL(d.model);
+    } catch (_) {}
+  }
+
   // ── Fetch interceptor ────────────────────────────────────────────────────────
 
   const _fetch = window.fetch.bind(window);
   window.fetch = async function (...args) {
+    try {
+      const init = args[1];
+      if (init) maybeExtractModel(init.body);
+    } catch (_) {}
+
     const res = await _fetch(...args);
     try {
       const url = typeof args[0] === 'string' ? args[0] : (args[0]?.url ?? '');
@@ -38,6 +51,12 @@
       try { tryParse(this._cco_url || '', this.responseText); } catch (_) {}
     });
     return _open.call(this, method, url, ...rest);
+  };
+
+  const _send = XMLHttpRequest.prototype.send;
+  XMLHttpRequest.prototype.send = function (body) {
+    maybeExtractModel(body);
+    return _send.call(this, body);
   };
 
   // ── Parser / extractor ───────────────────────────────────────────────────────
@@ -66,18 +85,16 @@
     } catch (_) {}
   }
 
-  // Run after page has hydrated
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', checkWindowState);
   } else {
     setTimeout(checkWindowState, 500);
   }
 
-  // keywords for matching field names (lowercase, no underscores)
   const S_KEYS = ['session', 'currentsession', 'daily', 'billingperiod', 'currentperiod', 'thisperiod',
-                   'fivehour', 'five'];   // rate_limits.five_hour → current session
+                   'fivehour', 'five'];
   const W_KEYS = ['weekly', 'allmodels', 'allmodel', 'week', 'planperiod', 'planusage',
-                   'sevenday', 'seven'];  // rate_limits.seven_day → weekly limit
+                   'sevenday', 'seven'];
   const PCT_KEYS  = ['percent', 'percentage', 'usedpercent', 'usagepercent',
                      'fraction', 'ratio', 'consumed', 'utilization', 'saturation'];
   const RST_KEYS  = ['reset', 'resetat', 'resets', 'expiresat', 'refreshat',
@@ -124,36 +141,26 @@
 
   function parseSection(obj) {
     if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return null;
-
-    // 1. Direct percent field
     const pv = pickVal(obj, PCT_KEYS);
     let pct = pv !== undefined ? toPercent(pv) : null;
-
-    // 2. Compute from used/total
     if (pct === null) {
       const used  = pickVal(obj, CNT_KEYS);
       const total = pickVal(obj, LIM_KEYS);
-      if (typeof used === 'number' && typeof total === 'number' && total > 0) {
+      if (typeof used === 'number' && typeof total === 'number' && total > 0)
         pct = Math.round((used / total) * 100);
-      }
     }
-
-    // 3. Compute from remaining/total
     if (pct === null) {
       const rem   = pickVal(obj, REM_KEYS);
       const total = pickVal(obj, LIM_KEYS);
-      if (typeof rem === 'number' && typeof total === 'number' && total > 0) {
+      if (typeof rem === 'number' && typeof total === 'number' && total > 0)
         pct = Math.round(((total - rem) / total) * 100);
-      }
     }
-
     const rv = pickVal(obj, RST_KEYS);
     return pct !== null ? { pct, reset: fmtReset(rv) } : null;
   }
 
   function extract(data, depth) {
     if (depth > 10 || !data || typeof data !== 'object') return null;
-
     if (Array.isArray(data)) {
       for (const item of data) {
         const r = extract(item, depth + 1);
@@ -161,22 +168,13 @@
       }
       return null;
     }
-
     let session = null, weekly = null;
-
     for (const [k, v] of Object.entries(data)) {
       const lk = lc(k);
-      if (S_KEYS.some(kw => lk.includes(kw))) {
-        session = parseSection(v) ?? session;
-      }
-      if (W_KEYS.some(kw => lk.includes(kw))) {
-        weekly = parseSection(v) ?? weekly;
-      }
+      if (S_KEYS.some(kw => lk.includes(kw))) session = parseSection(v) ?? session;
+      if (W_KEYS.some(kw => lk.includes(kw))) weekly  = parseSection(v) ?? weekly;
     }
-
     if (session || weekly) return { session, weekly };
-
-    // Recurse into children
     for (const v of Object.values(data)) {
       if (v && typeof v === 'object') {
         const r = extract(v, depth + 1);
