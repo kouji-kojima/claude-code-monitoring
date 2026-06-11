@@ -132,10 +132,17 @@
       : new Date(v);
     if (isNaN(d)) return String(v);
     const diff = d - Date.now();
-    if (diff < 0) return 'まもなくリセット';
+    if (diff <= 0) return 'まもなくリセット';
     const h = Math.floor(diff / 3_600_000);
     const m = Math.floor((diff % 3_600_000) / 60_000);
+    if (h === 0 && m === 0) return 'まもなくリセット';
     return h > 0 ? `${h}時間${m}分後にリセット` : `${m}分後にリセット`;
+  }
+
+  function resetAtMs(v) {
+    if (!v) return null;
+    const d = typeof v === 'number' ? new Date(v > 1e10 ? v : v * 1000) : new Date(v);
+    return isNaN(d) ? null : d.getTime();
   }
 
   function parseSection(obj) {
@@ -149,7 +156,7 @@
         pct = Math.round((used / total) * 100);
     }
     const rv = pickVal(obj, RST_KEYS);
-    return pct !== null ? { pct, reset: fmtReset(rv) } : null;
+    return pct !== null ? { pct, reset: fmtReset(rv), resetAt: resetAtMs(rv) } : null;
   }
 
   function extract(data, depth) {

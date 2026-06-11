@@ -113,11 +113,13 @@
       setBar('sf', 'sp', session.pct);
       const sr = shadowRoot.getElementById('sr');
       if (sr) sr.textContent = session.reset || '';
+      scheduleResetPoll('session', session.resetAt);
     }
     if (weekly != null) {
       setBar('wf', 'wp', weekly.pct);
       const wr = shadowRoot.getElementById('wr');
       if (wr) wr.textContent = weekly.reset || '';
+      scheduleResetPoll('weekly', weekly.resetAt);
     }
     const ts = shadowRoot.getElementById('ts');
     if (ts) {
@@ -185,6 +187,23 @@
         }
       } catch (_) {}
     }
+  }
+
+  // ── リセット時刻での自動再取得 ────────────────────────────────────────────────
+
+  const resetTimers = { session: null, weekly: null };
+
+  function scheduleResetPoll(key, resetAt) {
+    if (!resetAt) return;
+    const delay = resetAt - Date.now();
+    if (delay <= 0 || delay > 6 * 3600 * 1000) return; // 6時間超は無視
+    if (resetTimers[key]) clearTimeout(resetTimers[key]);
+    resetTimers[key] = setTimeout(() => {
+      resetTimers[key] = null;
+      pollNow();
+      // APIが更新されるまで少し待ってもう一度
+      setTimeout(pollNow, 5000);
+    }, delay + 1500); // 1.5秒バッファ
   }
 
   // ── 30秒ポーリング ───────────────────────────────────────────────────────────
@@ -297,8 +316,10 @@
     if (!v) return '';
     const d = typeof v === 'number' ? new Date(v > 1e10 ? v : v*1000) : new Date(v);
     if (isNaN(d)) return '';
-    const diff = d - Date.now(); if (diff < 0) return 'まもなくリセット';
+    const diff = d - Date.now();
+    if (diff <= 0) return 'まもなくリセット';
     const h = Math.floor(diff/3600000), m = Math.floor((diff%3600000)/60000);
+    if (h === 0 && m === 0) return 'まもなくリセット';
     return h > 0 ? `${h}時間${m}分後にリセット` : `${m}分後にリセット`;
   }
   function parseS2(obj) {
