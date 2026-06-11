@@ -139,7 +139,7 @@
     chrome.storage.local.get(['cco_history'], ({ cco_history = [] }) => {
       const last = cco_history[cco_history.length - 1];
       const now  = Date.now();
-      if (last && last.s === s && last.w === w && (now - last.t) < 5 * 60 * 1000) {
+      if (last && last.s === s && last.w === w && (now - last.t) < 60 * 1000) {
         // Values unchanged and recent — just update current state
         chrome.storage.local.set({ cco_current: {
           session: cached.session, weekly: cached.weekly,

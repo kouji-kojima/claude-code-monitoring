@@ -57,13 +57,19 @@ function drawChart(canvas, history) {
   ctx.roundRect(0, 0, W, H, 8);
   ctx.fill();
 
-  if (history.length < 2) {
+  if (history.length === 0) {
     ctx.fillStyle = MUTED;
     ctx.font = '13px -apple-system, sans-serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText('データを収集中です... しばらくお待ちください', W / 2, H / 2);
+    ctx.fillText('データを収集中です... claude.ai を開いてお待ちください', W / 2, H / 2);
     return null;
+  }
+
+  // Single data point — synthesize a "now" point so a flat line renders.
+  if (history.length === 1) {
+    const p = history[0];
+    history = [p, { ...p, t: Math.max(Date.now(), p.t + 60000) }];
   }
 
   const t0 = history[0].t;
