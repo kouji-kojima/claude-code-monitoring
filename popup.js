@@ -77,7 +77,7 @@ function drawChart(canvas, history) {
   const tRange = Math.max(t1 - t0, 1);
 
   const xPos = t => PAD.left + CW * (t - t0) / tRange;
-  const yPos = v => PAD.top + CH * (1 - Math.min(100, Math.max(0, v)) / 100);
+  const yPos = v => PAD.top + CH * (1 - Math.min(110, Math.max(0, v)) / 110);
 
   // Grid + Y-axis labels
   [0, 25, 50, 75, 100].forEach(pct => {
