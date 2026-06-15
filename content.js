@@ -37,22 +37,22 @@
           user-select: none;
         }
         .hdr { display:flex; align-items:center; justify-content:space-between; margin-bottom:7px; }
-        .title { font-size:10px; font-weight:700; color:#7b7faa; letter-spacing:0.06em; text-transform:uppercase; }
-        .toggle-btn { background:none; border:none; color:#5a5e98; cursor:pointer; font-size:15px; line-height:1; padding:0; }
-        .toggle-btn:hover { color:#9b9fcc; }
+        .title { font-size:10px; font-weight:700; color:#c8c9e8; letter-spacing:0.06em; text-transform:uppercase; }
+        .toggle-btn { background:none; border:none; color:#c8c9e8; cursor:pointer; font-size:15px; line-height:1; padding:0; }
+        .toggle-btn:hover { color:#ffffff; }
         .body { display:flex; flex-direction:column; gap:6px; }
         #card.min .body { display:none; }
         .row { display:flex; flex-direction:column; gap:2px; }
-        .lbl { font-size:9.5px; color:#6b6f9a; }
+        .lbl { font-size:9.5px; color:#c8c9e8; }
         .bar-row { display:flex; align-items:center; gap:5px; }
         .bar { flex:1; height:4px; background:#2b2d52; border-radius:3px; overflow:hidden; }
         .fill { height:100%; border-radius:3px; background:#4f46e5; transition:width 0.4s ease; width:0%; }
         .fill.warn   { background:#d97706; }
         .fill.danger { background:#dc2626; }
         .pct { font-size:11px; font-weight:700; color:#e0e1ff; min-width:28px; text-align:right; }
-        .sub { font-size:9px; color:#4e5280; }
+        .sub { font-size:9px; color:#c8c9e8; }
         .div { height:1px; background:#252748; }
-        .ts { font-size:8.5px; color:#353760; text-align:right; margin-top:5px; }
+        .ts { font-size:8.5px; color:#9b9fcc; text-align:right; margin-top:5px; }
       </style>
       <div id="card">
         <div class="hdr">
