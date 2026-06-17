@@ -308,7 +308,7 @@
     }
   }
   function toPct2(v) {
-    if (typeof v === 'number') return v > 1 ? Math.round(v) : Math.round(v * 100);
+    if (typeof v === 'number') return v >= 1 ? Math.round(v) : Math.round(v * 100);
     if (typeof v === 'string') { const m = v.match(/^(\d+\.?\d*)\s*%?$/); if (m) { const n = +m[1]; return n <= 1 ? Math.round(n*100) : Math.round(n); } }
     return null;
   }

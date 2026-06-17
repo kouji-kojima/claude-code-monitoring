@@ -115,12 +115,12 @@
 
   function toPercent(v) {
     if (typeof v === 'number') {
-      if (v > 1 && v <= 100) return Math.round(v);
-      if (v >= 0 && v <= 1)  return Math.round(v * 100);
+      if (v >= 1 && v <= 100) return Math.round(v);
+      if (v >= 0 && v < 1)   return Math.round(v * 100);
     }
     if (typeof v === 'string') {
       const m = v.match(/^(\d+(\.\d+)?)\s*%?$/);
-      if (m) { const n = parseFloat(m[1]); return n <= 1 ? Math.round(n * 100) : Math.round(n); }
+      if (m) { const n = parseFloat(m[1]); return n < 1 ? Math.round(n * 100) : Math.round(n); }
     }
     return null;
   }
