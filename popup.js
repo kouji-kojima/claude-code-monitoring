@@ -13,8 +13,7 @@ const MODEL_COLORS = {
   fable:  '#fbbf24',
 };
 
-const JST = 9 * 3600_000;       // UTC+9 オフセット (ms)
-const WEEKEND_W = 0.3;          // 土日は平日の 30% 幅
+const JST = 9 * 3600_000;  // UTC+9 オフセット (ms)
 
 function modelColor(model) {
   if (!model) return ORANGE;
@@ -48,14 +47,42 @@ function buildTimeScale(t0, t1) {
   // JST 0:00 に揃えた最初の日の始まり
   const jstDay0 = new Date(t0 + JST);
   jstDay0.setUTCHours(0, 0, 0, 0);
-  let cur = jstDay0.getTime() - JST; // UTC に戻す
+  let cur = jstDay0.getTime() - JST;
 
   const breaks = [{ real: cur, virt: 0 }];
   let virt = 0;
+
   while (cur < t1 + 86_400_000) {
-    const dow = new Date(cur + JST).getUTCDay(); // JST での曜日 (0=日,6=土)
-    virt += (dow === 0 || dow === 6) ? WEEKEND_W : 1.0;
-    cur  += 86_400_000;
+    const jstNow = new Date(cur + JST);
+    const dow    = jstNow.getUTCDay();
+    const hJST   = jstNow.getUTCHours();
+    let next, w;
+
+    if (dow === 0 || dow === 6) {
+      // 土日: 翌 0:00 JST までスキップ
+      const nx = new Date(jstNow);
+      nx.setUTCDate(nx.getUTCDate() + 1); nx.setUTCHours(0, 0, 0, 0);
+      next = nx.getTime() - JST; w = 0;
+    } else if (hJST < 7) {
+      // 深夜 0:00-7:00: スキップ
+      const nx = new Date(jstNow);
+      nx.setUTCHours(7, 0, 0, 0);
+      next = nx.getTime() - JST; w = 0;
+    } else if (hJST < 22) {
+      // 活動時間 7:00-22:00 (15h = 1.0)
+      const nx = new Date(jstNow);
+      nx.setUTCHours(22, 0, 0, 0);
+      next = nx.getTime() - JST;
+      w = (next - cur) / (15 * 3600_000);
+    } else {
+      // 夜間 22:00-24:00: スキップ
+      const nx = new Date(jstNow);
+      nx.setUTCDate(nx.getUTCDate() + 1); nx.setUTCHours(0, 0, 0, 0);
+      next = nx.getTime() - JST; w = 0;
+    }
+
+    virt += w;
+    cur = next;
     breaks.push({ real: cur, virt });
   }
   return breaks;
@@ -115,42 +142,36 @@ function drawChart(canvas, history) {
   const xPos   = makeXPos(PAD, CW, breaks, t0, t1);
   const yPos   = v => PAD.top + CH * (1 - Math.min(110, Math.max(0, v)) / 110);
 
-  // ── 土日帯・曜日ラベル ───────────────────────────────────────────────────────
+  // ── 曜日ラベル（平日 7:00 JST の開始位置）──────────────────────────────────
   const DAY_NAMES = ['日', '月', '火', '水', '木', '金', '土'];
   const spanDays  = (t1 - t0) / 86_400_000;
 
-  if (spanDays >= 0.5) {
-    for (let i = 0; i < breaks.length - 1; i++) {
-      const ds  = breaks[i].real;
-      const de  = breaks[i + 1].real;
-      if (de < t0 || ds > t1) continue;
-      const dow = new Date(ds + JST).getUTCDay();
-      const x0  = Math.max(PAD.left, xPos(Math.max(ds, t0)));
-      const x1  = Math.min(PAD.left + CW, xPos(Math.min(de, t1)));
-      if (x1 <= x0) continue;
-
-      // 土日は薄紫の帯
-      if (dow === 0 || dow === 6) {
-        ctx.fillStyle = 'rgba(120, 80, 220, 0.10)';
-        ctx.fillRect(x0, PAD.top, x1 - x0, CH);
+  if (spanDays >= 0.3) {
+    const jd0 = new Date(t0 + JST); jd0.setUTCHours(0, 0, 0, 0);
+    let d = jd0.getTime() - JST;
+    while (d <= t1 + 86_400_000) {
+      const jd  = new Date(d + JST);
+      const dow = jd.getUTCDay();
+      if (dow !== 0 && dow !== 6) {
+        const nx = new Date(jd); nx.setUTCHours(7, 0, 0, 0);
+        const t7 = nx.getTime() - JST;
+        if (t7 >= t0 && t7 <= t1) {
+          const x = xPos(t7);
+          ctx.strokeStyle = '#191b36';
+          ctx.lineWidth = 1;
+          ctx.setLineDash([]);
+          ctx.beginPath();
+          ctx.moveTo(x, PAD.top);
+          ctx.lineTo(x, PAD.top + CH);
+          ctx.stroke();
+          ctx.fillStyle    = '#9499c8';
+          ctx.font         = 'bold 9px sans-serif';
+          ctx.textAlign    = 'left';
+          ctx.textBaseline = 'top';
+          ctx.fillText(DAY_NAMES[dow], x + 3, PAD.top + 3);
+        }
       }
-
-      // 日付境界の縦線＋曜日ラベル
-      if (ds >= t0) {
-        ctx.strokeStyle = dow === 0 || dow === 6 ? '#2a2060' : '#191b36';
-        ctx.lineWidth = 1;
-        ctx.setLineDash([]);
-        ctx.beginPath();
-        ctx.moveTo(x0, PAD.top);
-        ctx.lineTo(x0, PAD.top + CH);
-        ctx.stroke();
-
-        ctx.fillStyle   = dow === 0 || dow === 6 ? '#c4bcf8' : '#9499c8';
-        ctx.font        = 'bold 9px sans-serif';
-        ctx.textAlign   = 'left';
-        ctx.textBaseline = 'top';
-        ctx.fillText(DAY_NAMES[dow], x0 + 3, PAD.top + 3);
-      }
+      d += 86_400_000;
     }
   }
 
@@ -212,7 +233,9 @@ function drawChart(canvas, history) {
     ctx.lineJoin = 'round';
     ctx.beginPath();
     validW.forEach((p, i) => {
-      i === 0 ? ctx.moveTo(xPos(p.t), yPos(p.w)) : ctx.lineTo(xPos(p.t), yPos(p.w));
+      const x = xPos(p.t);
+      if (i > 0 && x - xPos(validW[i - 1].t) >= 1) ctx.lineTo(x, yPos(p.w));
+      else ctx.moveTo(x, yPos(p.w));
     });
     ctx.stroke();
   }
@@ -236,10 +259,12 @@ function drawChart(canvas, history) {
     ctx.lineCap = 'round';
     for (let i = 1; i < validS.length; i++) {
       const p0 = validS[i - 1], p1 = validS[i];
+      const x0 = xPos(p0.t), x1 = xPos(p1.t);
+      if (x1 - x0 < 1) continue; // ギャップ（夜間・土日）はスキップ
       ctx.strokeStyle = modelColor(p1.model);
       ctx.beginPath();
-      ctx.moveTo(xPos(p0.t), yPos(p0.s));
-      ctx.lineTo(xPos(p1.t), yPos(p1.s));
+      ctx.moveTo(x0, yPos(p0.s));
+      ctx.lineTo(x1, yPos(p1.s));
       ctx.stroke();
     }
   }
