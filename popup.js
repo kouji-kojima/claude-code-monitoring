@@ -13,12 +13,13 @@ const MODEL_COLORS = {
   fable:  '#fbbf24',
 };
 
+const JST = 9 * 3600_000;       // UTC+9 オフセット (ms)
+const WEEKEND_W = 0.3;          // 土日は平日の 30% 幅
+
 function modelColor(model) {
   if (!model) return ORANGE;
   const m = model.toLowerCase();
-  for (const [k, c] of Object.entries(MODEL_COLORS)) {
-    if (m.includes(k)) return c;
-  }
+  for (const [k, c] of Object.entries(MODEL_COLORS)) { if (m.includes(k)) return c; }
   return ORANGE;
 }
 
@@ -29,8 +30,7 @@ function modelLabel(model) {
   if (m.includes('sonnet')) return 'Sonnet';
   if (m.includes('haiku'))  return 'Haiku';
   if (m.includes('fable'))  return 'Fable';
-  const parts = model.split('-').filter(p => !/^\d/.test(p));
-  return parts.slice(1).join(' ') || model;
+  return model.split('-').filter(p => !/^\d/.test(p)).slice(1).join(' ') || model;
 }
 
 function fmtTime(ms) {
@@ -40,6 +40,44 @@ function fmtTime(ms) {
 
 function alpha(hex, a) {
   return hex + Math.round(a * 255).toString(16).padStart(2, '0');
+}
+
+// ── 非線形時間スケール (JST 基準、土日圧縮) ──────────────────────────────────
+
+function buildTimeScale(t0, t1) {
+  // JST 0:00 に揃えた最初の日の始まり
+  const jstDay0 = new Date(t0 + JST);
+  jstDay0.setUTCHours(0, 0, 0, 0);
+  let cur = jstDay0.getTime() - JST; // UTC に戻す
+
+  const breaks = [{ real: cur, virt: 0 }];
+  let virt = 0;
+  while (cur < t1 + 86_400_000) {
+    const dow = new Date(cur + JST).getUTCDay(); // JST での曜日 (0=日,6=土)
+    virt += (dow === 0 || dow === 6) ? WEEKEND_W : 1.0;
+    cur  += 86_400_000;
+    breaks.push({ real: cur, virt });
+  }
+  return breaks;
+}
+
+function virtAt(breaks, t) {
+  for (let i = 0; i < breaks.length - 1; i++) {
+    if (t >= breaks[i].real && t < breaks[i + 1].real) {
+      const frac = (t - breaks[i].real) / (breaks[i + 1].real - breaks[i].real);
+      return breaks[i].virt + frac * (breaks[i + 1].virt - breaks[i].virt);
+    }
+  }
+  // 末端外挿
+  const last = breaks[breaks.length - 1], prev = breaks[breaks.length - 2];
+  return last.virt + (t - last.real) / (last.real - prev.real) * (last.virt - prev.virt);
+}
+
+function makeXPos(PAD, CW, breaks, t0, t1) {
+  const v0 = virtAt(breaks, t0);
+  const v1 = virtAt(breaks, t1);
+  const span = Math.max(v1 - v0, 0.001);
+  return t => PAD.left + CW * (virtAt(breaks, t) - v0) / span;
 }
 
 // ── Chart ────────────────────────────────────────────────────────────────────
@@ -66,7 +104,6 @@ function drawChart(canvas, history) {
     return null;
   }
 
-  // Single data point — synthesize a "now" point so a flat line renders.
   if (history.length === 1) {
     const p = history[0];
     history = [p, { ...p, t: Math.max(Date.now(), p.t + 60000) }];
@@ -74,12 +111,50 @@ function drawChart(canvas, history) {
 
   const t0 = history[0].t;
   const t1 = history[history.length - 1].t;
-  const tRange = Math.max(t1 - t0, 1);
+  const breaks = buildTimeScale(t0, t1);
+  const xPos   = makeXPos(PAD, CW, breaks, t0, t1);
+  const yPos   = v => PAD.top + CH * (1 - Math.min(110, Math.max(0, v)) / 110);
 
-  const xPos = t => PAD.left + CW * (t - t0) / tRange;
-  const yPos = v => PAD.top + CH * (1 - Math.min(110, Math.max(0, v)) / 110);
+  // ── 土日帯・曜日ラベル ───────────────────────────────────────────────────────
+  const DAY_NAMES = ['日', '月', '火', '水', '木', '金', '土'];
+  const spanDays  = (t1 - t0) / 86_400_000;
 
-  // Grid + Y-axis labels
+  if (spanDays >= 0.5) {
+    for (let i = 0; i < breaks.length - 1; i++) {
+      const ds  = breaks[i].real;
+      const de  = breaks[i + 1].real;
+      if (de < t0 || ds > t1) continue;
+      const dow = new Date(ds + JST).getUTCDay();
+      const x0  = Math.max(PAD.left, xPos(Math.max(ds, t0)));
+      const x1  = Math.min(PAD.left + CW, xPos(Math.min(de, t1)));
+      if (x1 <= x0) continue;
+
+      // 土日は薄紫の帯
+      if (dow === 0 || dow === 6) {
+        ctx.fillStyle = 'rgba(120, 80, 220, 0.10)';
+        ctx.fillRect(x0, PAD.top, x1 - x0, CH);
+      }
+
+      // 日付境界の縦線＋曜日ラベル
+      if (ds >= t0) {
+        ctx.strokeStyle = dow === 0 || dow === 6 ? '#2a2060' : '#191b36';
+        ctx.lineWidth = 1;
+        ctx.setLineDash([]);
+        ctx.beginPath();
+        ctx.moveTo(x0, PAD.top);
+        ctx.lineTo(x0, PAD.top + CH);
+        ctx.stroke();
+
+        ctx.fillStyle   = dow === 0 || dow === 6 ? '#7b6fdd' : '#2e3260';
+        ctx.font        = 'bold 9px sans-serif';
+        ctx.textAlign   = 'left';
+        ctx.textBaseline = 'top';
+        ctx.fillText(DAY_NAMES[dow], x0 + 3, PAD.top + 3);
+      }
+    }
+  }
+
+  // ── Y軸グリッド＋ラベル ──────────────────────────────────────────────────────
   [0, 25, 50, 75, 100].forEach(pct => {
     const y = yPos(pct);
     ctx.strokeStyle = GRID;
@@ -90,7 +165,6 @@ function drawChart(canvas, history) {
     ctx.lineTo(PAD.left + CW, y);
     ctx.stroke();
     ctx.setLineDash([]);
-
     ctx.fillStyle = MUTED;
     ctx.font = '10px sans-serif';
     ctx.textAlign = 'right';
@@ -98,11 +172,11 @@ function drawChart(canvas, history) {
     ctx.fillText(pct + '%', PAD.left - 6, y);
   });
 
-  // X-axis labels (up to 6 ticks)
+  // ── X軸ラベル（最大 6 tick）────────────────────────────────────────────────
   const ticks = Math.min(6, history.length - 1);
   for (let i = 0; i <= ticks; i++) {
     const idx = Math.round((i / ticks) * (history.length - 1));
-    const x = xPos(history[idx].t);
+    const x   = xPos(history[idx].t);
     ctx.fillStyle = MUTED;
     ctx.font = '10px sans-serif';
     ctx.textAlign = 'center';
@@ -110,7 +184,7 @@ function drawChart(canvas, history) {
     ctx.fillText(fmtTime(history[idx].t), x, PAD.top + CH + 6);
   }
 
-  // Clip to chart area
+  // ── クリップ ───────────────────────────────────────────────────────────────
   ctx.save();
   ctx.beginPath();
   ctx.rect(PAD.left, PAD.top, CW, CH);
@@ -119,7 +193,7 @@ function drawChart(canvas, history) {
   const validS = history.filter(p => p.s != null);
   const validW = history.filter(p => p.w != null);
 
-  // ── Weekly line + fill ─────────────────────────────────────────────────────
+  // 週間制限ライン
   if (validW.length >= 2) {
     const grad = ctx.createLinearGradient(0, PAD.top, 0, PAD.top + CH);
     grad.addColorStop(0, alpha(INDIGO, 0.22));
@@ -143,7 +217,7 @@ function drawChart(canvas, history) {
     ctx.stroke();
   }
 
-  // ── Session gradient fill (orange base, under model-colored line) ──────────
+  // セッションライン（モデル別色）
   if (validS.length >= 2) {
     const grad = ctx.createLinearGradient(0, PAD.top, 0, PAD.top + CH);
     grad.addColorStop(0, alpha(ORANGE, 0.18));
@@ -157,7 +231,6 @@ function drawChart(canvas, history) {
     ctx.closePath();
     ctx.fill();
 
-    // Session line — each segment colored by the model at that point
     ctx.lineWidth = 2.5;
     ctx.lineJoin = 'round';
     ctx.lineCap = 'round';
@@ -171,7 +244,7 @@ function drawChart(canvas, history) {
     }
   }
 
-  // ── Spike markers ──────────────────────────────────────────────────────────
+  // スパイクマーカー
   let maxSpike = null;
   validS.forEach((pt, i) => {
     if (i === 0) return;
@@ -180,17 +253,14 @@ function drawChart(canvas, history) {
     if (!maxSpike || delta > maxSpike.delta) maxSpike = { delta: Math.round(delta), t: pt.t };
 
     const x = xPos(pt.t), y = yPos(pt.s);
-
-    // Glow ring
     ctx.shadowColor = ORANGE;
-    ctx.shadowBlur = 12;
-    ctx.fillStyle = '#ffffff';
+    ctx.shadowBlur  = 12;
+    ctx.fillStyle   = '#ffffff';
     ctx.beginPath();
     ctx.arc(x, y, 4.5, 0, Math.PI * 2);
     ctx.fill();
     ctx.shadowBlur = 0;
 
-    // Label for notable spikes
     if (delta >= 5) {
       ctx.fillStyle = ORANGE;
       ctx.font = 'bold 9px sans-serif';
@@ -210,10 +280,9 @@ async function main() {
   const { cco_history = [], cco_current = {} } =
     await chrome.storage.local.get(['cco_history', 'cco_current']);
 
-  const canvas = document.getElementById('chart');
+  const canvas   = document.getElementById('chart');
   const maxSpike = drawChart(canvas, cco_history);
 
-  // Stats
   const s = cco_current.session;
   const w = cco_current.weekly;
   document.getElementById('stat-session').textContent = s ? s.pct + '%' : '--%';
@@ -222,9 +291,8 @@ async function main() {
   const model = cco_current.model;
   if (model) {
     const el = document.getElementById('stat-model');
-    el.textContent  = modelLabel(model);
-    el.style.color  = modelColor(model);
-
+    el.textContent = modelLabel(model);
+    el.style.color = modelColor(model);
     document.getElementById('model-legend').style.display = 'flex';
     document.getElementById('model-dot').style.cssText =
       `width:8px;height:8px;border-radius:50%;background:${modelColor(model)};flex-shrink:0`;
