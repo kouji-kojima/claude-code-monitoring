@@ -4,7 +4,7 @@ const ORANGE = '#FF6B35';
 const INDIGO = '#4f46e5';
 const BG     = '#0a0b1c';
 const GRID   = '#14162e';
-const MUTED  = '#9499c8';
+const MUTED  = '#e0e1ff';
 
 const MODEL_COLORS = {
   opus:   '#c084fc',
@@ -164,7 +164,7 @@ function drawChart(canvas, history) {
           ctx.moveTo(x, PAD.top);
           ctx.lineTo(x, PAD.top + CH);
           ctx.stroke();
-          ctx.fillStyle    = '#9499c8';
+          ctx.fillStyle    = '#e0e1ff';
           ctx.font         = 'bold 9px sans-serif';
           ctx.textAlign    = 'left';
           ctx.textBaseline = 'top';
