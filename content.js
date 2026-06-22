@@ -267,19 +267,12 @@
     }
   }
 
-  // Re-dispatch raw successful responses through the parser
+  // Parse raw successful responses and apply
   window.addEventListener('__cco_raw', (ev) => {
-    const { text } = ev.detail;
+    const text = ev.detail?.text;
     if (!text) return;
-    try {
-      const data = JSON.parse(text);
-      window.dispatchEvent(new CustomEvent('__cco_probe_data', { detail: data }));
-    } catch (_) {}
-  });
-
-  window.addEventListener('__cco_probe_data', (ev) => {
-    const data = ev.detail;
-    if (!data) return;
+    let data;
+    try { data = JSON.parse(text); } catch (_) { return; }
     const found = contentExtract(data, 0);
     if (found && (found.session || found.weekly)) {
       if (found.session != null) cached.session = found.session;
@@ -309,7 +302,7 @@
   }
   function toPct2(v) {
     if (typeof v === 'number') return v >= 1 ? Math.round(v) : Math.round(v * 100);
-    if (typeof v === 'string') { const m = v.match(/^(\d+\.?\d*)\s*%?$/); if (m) { const n = +m[1]; return n <= 1 ? Math.round(n*100) : Math.round(n); } }
+    if (typeof v === 'string') { const m = v.match(/^(\d+\.?\d*)\s*%?$/); if (m) { const n = +m[1]; return n < 1 ? Math.round(n*100) : Math.round(n); } }
     return null;
   }
   function fmtR2(v) {
@@ -322,12 +315,18 @@
     if (h === 0 && m === 0) return 'まもなくリセット';
     return h > 0 ? `${h}時間${m}分後にリセット` : `${m}分後にリセット`;
   }
+  function rstAt2(v) {
+    if (!v) return null;
+    const d = typeof v === 'number' ? new Date(v > 1e10 ? v : v*1000) : new Date(v);
+    return isNaN(d) ? null : d.getTime();
+  }
   function parseS2(obj) {
     if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return null;
     let pct = null;
     const pv = pv2(obj, PCT); pct = pv !== undefined ? toPct2(pv) : null;
     if (pct === null) { const u = pv2(obj,CNT), t = pv2(obj,LIM); if (typeof u==='number'&&typeof t==='number'&&t>0) pct=Math.round(u/t*100); }
-    return pct !== null ? { pct, reset: fmtR2(pv2(obj, RST)) } : null;
+    const rv = pv2(obj, RST);
+    return pct !== null ? { pct, reset: fmtR2(rv), resetAt: rstAt2(rv) } : null;
   }
   function contentExtract(data, depth) {
     if (depth > 10 || !data || typeof data !== 'object') return null;
