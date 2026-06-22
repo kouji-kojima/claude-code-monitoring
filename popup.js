@@ -304,11 +304,23 @@ function drawChart(canvas, history) {
 
 // ── Main ─────────────────────────────────────────────────────────────────────
 
+function isTabMode() {
+  return new URLSearchParams(location.search).has('tab');
+}
+
+function applyTabLayout(canvas) {
+  const w = Math.max(window.innerWidth - 40, 740);
+  document.body.classList.add('tab-mode');
+  canvas.width  = w;
+  canvas.style.width  = w + 'px';
+}
+
 async function main() {
   const { cco_history = [], cco_current = {} } =
     await chrome.storage.local.get(['cco_history', 'cco_current']);
 
-  const canvas   = document.getElementById('chart');
+  const canvas = document.getElementById('chart');
+  if (isTabMode()) applyTabLayout(canvas);
   const maxSpike = drawChart(canvas, cco_history);
 
   const s = cco_current.session;
@@ -334,6 +346,10 @@ async function main() {
 
   const last = cco_history[cco_history.length - 1];
   if (last) document.getElementById('stat-update').textContent = fmtTime(last.t);
+
+  document.getElementById('expand-btn').addEventListener('click', () => {
+    chrome.tabs.create({ url: chrome.runtime.getURL('popup.html') + '?tab=1' });
+  });
 
   document.getElementById('clear-btn').addEventListener('click', () => {
     chrome.storage.local.remove(['cco_history', 'cco_current'], () => window.close());

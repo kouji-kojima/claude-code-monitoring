@@ -6,7 +6,7 @@
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
-      width: 1500px;
+      width: 780px;
       background: #0d0e1f;
       color: #c8c9e8;
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
@@ -40,6 +40,19 @@
       cursor: pointer;
     }
     .clear-btn:hover { color: #9b9fcc; border-color: #4a4e80; }
+    .expand-btn {
+      background: none;
+      border: 1px solid #252748;
+      border-radius: 5px;
+      color: #6b6f9a;
+      font-size: 11px;
+      padding: 3px 9px;
+      cursor: pointer;
+    }
+    .expand-btn:hover { color: #c8c9e8; border-color: #9499c8; }
+    /* タブモード: 幅を画面いっぱいに */
+    body.tab-mode { width: 100vw; }
+    body.tab-mode #chart { width: calc(100vw - 40px); }
 
     /* ── Legend ── */
     .legend {
@@ -97,6 +110,7 @@
   <div class="hdr">
     <img src="icons/icon48.png" alt="">
     <span class="hdr-title">Claude Code Monitor</span>
+    <button class="expand-btn" id="expand-btn">全画面で開く</button>
     <button class="clear-btn" id="clear-btn">履歴をクリア</button>
   </div>
 
@@ -119,7 +133,7 @@
     </div>
   </div>
 
-  <canvas id="chart" width="1460" height="280"></canvas>
+  <canvas id="chart" width="740" height="280"></canvas>
 
   <div class="stats">
     <div class="stat-cell">

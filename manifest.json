@@ -30,6 +30,6 @@
       "world": "ISOLATED"
     }
   ],
-  "permissions": ["storage"],
+  "permissions": ["storage", "tabs"],
   "host_permissions": ["https://claude.ai/*"]
 }
