@@ -4,7 +4,7 @@ const ORANGE = '#FF6B35';
 const INDIGO = '#4f46e5';
 const BG     = '#0a0b1c';
 const GRID   = '#14162e';
-const MUTED  = '#3a3e68';
+const MUTED  = '#9499c8';
 
 const MODEL_COLORS = {
   opus:   '#c084fc',
@@ -145,7 +145,7 @@ function drawChart(canvas, history) {
         ctx.lineTo(x0, PAD.top + CH);
         ctx.stroke();
 
-        ctx.fillStyle   = dow === 0 || dow === 6 ? '#7b6fdd' : '#2e3260';
+        ctx.fillStyle   = dow === 0 || dow === 6 ? '#c4bcf8' : '#9499c8';
         ctx.font        = 'bold 9px sans-serif';
         ctx.textAlign   = 'left';
         ctx.textBaseline = 'top';
@@ -262,11 +262,14 @@ function drawChart(canvas, history) {
     ctx.shadowBlur = 0;
 
     if (delta >= 5) {
-      ctx.fillStyle = ORANGE;
+      ctx.shadowColor = 'rgba(0,0,0,0.8)';
+      ctx.shadowBlur  = 4;
+      ctx.fillStyle = '#ffffff';
       ctx.font = 'bold 9px sans-serif';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'bottom';
       ctx.fillText(`+${Math.round(delta)}%`, x, y - 8);
+      ctx.shadowBlur = 0;
     }
   });
 
