@@ -15,10 +15,21 @@
     const host = document.createElement('div');
     host.id = 'cco-host';
     host.style.cssText = [
-      'position:fixed', 'bottom:275px', 'left:8px',
+      'position:fixed', 'top:0', 'left:8px',
       `width:${CARD_W}px`, 'z-index:2147483647', 'display:block'
     ].join(';');
     document.body.appendChild(host);
+
+    // デフォルト位置: bottom:275px 相当を top で表現
+    const defaultTop = () => window.innerHeight - 275 - (host.offsetHeight || 130);
+    chrome.storage.local.get('cco_pos', ({ cco_pos }) => {
+      if (cco_pos) {
+        host.style.left = cco_pos.left + 'px';
+        host.style.top  = cco_pos.top  + 'px';
+      } else {
+        host.style.top = defaultTop() + 'px';
+      }
+    });
 
     shadowRoot = host.attachShadow({ mode: 'open' });
     shadowRoot.innerHTML = `
@@ -36,7 +47,8 @@
           color: #c8c9e8;
           user-select: none;
         }
-        .hdr { display:flex; align-items:center; justify-content:space-between; margin-bottom:7px; }
+        .hdr { display:flex; align-items:center; justify-content:space-between; margin-bottom:7px; cursor:grab; }
+        .hdr:active { cursor:grabbing; }
         .title { font-size:10px; font-weight:700; color:#c8c9e8; letter-spacing:0.06em; text-transform:uppercase; }
         .toggle-btn { background:none; border:none; color:#c8c9e8; cursor:pointer; font-size:15px; line-height:1; padding:0; }
         .toggle-btn:hover { color:#ffffff; }
@@ -92,6 +104,35 @@
       card.classList.toggle('min', min);
       tog.textContent = min ? '+' : '−';
       chrome.storage.local.set({ cco_min: min });
+    });
+
+    // ── ドラッグ ──────────────────────────────────────────────────────────────
+    let dragging = false, dragOx = 0, dragOy = 0;
+    const hdr = shadowRoot.querySelector('.hdr');
+
+    hdr.addEventListener('mousedown', (e) => {
+      if (e.target === tog) return; // 最小化ボタンはドラッグ対象外
+      dragging = true;
+      dragOx = e.clientX - host.offsetLeft;
+      dragOy = e.clientY - host.offsetTop;
+      e.preventDefault();
+    });
+
+    document.addEventListener('mousemove', (e) => {
+      if (!dragging) return;
+      const maxX = window.innerWidth  - CARD_W;
+      const maxY = window.innerHeight - host.offsetHeight;
+      host.style.left = Math.max(0, Math.min(maxX, e.clientX - dragOx)) + 'px';
+      host.style.top  = Math.max(0, Math.min(maxY, e.clientY - dragOy)) + 'px';
+    });
+
+    document.addEventListener('mouseup', () => {
+      if (!dragging) return;
+      dragging = false;
+      chrome.storage.local.set({ cco_pos: {
+        top:  parseInt(host.style.top),
+        left: parseInt(host.style.left),
+      }});
     });
   }
 
